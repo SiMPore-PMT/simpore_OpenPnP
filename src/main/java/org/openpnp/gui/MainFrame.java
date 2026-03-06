@@ -27,6 +27,9 @@ import java.awt.Dimension;
 import java.awt.EventQueue;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
+import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -36,6 +39,8 @@ import java.awt.event.ComponentListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.KeyEventDispatcher;
+import java.awt.KeyboardFocusManager;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.lang.reflect.Method;
@@ -89,6 +94,7 @@ import org.openpnp.gui.support.MessageBoxes;
 import org.openpnp.gui.support.OSXAdapter;
 import org.openpnp.gui.support.PropertySheetWizardAdapter;
 import org.openpnp.gui.support.RotationCellValue;
+import org.openpnp.model.Board;
 import org.openpnp.model.BoardLocation;
 import org.openpnp.model.Configuration;
 import org.openpnp.model.Configuration.TablesLinked;
@@ -280,6 +286,11 @@ public class MainFrame extends JFrame {
     private JMenu mnEditAddBoard;
     private JMenuItem mnCaptureToolLocation;
 
+    private boolean isShiftDown;
+    public boolean getShiftDown() {
+        return isShiftDown;
+    }
+
     public MainFrame(Configuration configuration) {
         mainFrame = this;
         this.configuration = configuration;
@@ -313,6 +324,21 @@ public class MainFrame extends JFrame {
                 prefs.getInt(PREF_WINDOW_Y, PREF_WINDOW_Y_DEF),
                 prefs.getInt(PREF_WINDOW_WIDTH, PREF_WINDOW_WIDTH_DEF),
                 prefs.getInt(PREF_WINDOW_HEIGHT, PREF_WINDOW_HEIGHT_DEF));
+
+        // Ensure the window is within the bounds of a screen.
+        Rectangle windowBounds = getBounds();
+        boolean isWithinScreen = false;
+        for (GraphicsDevice gd : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+            Rectangle screenBounds = gd.getDefaultConfiguration().getBounds();
+            if (windowBounds.intersects(screenBounds)) {
+                isWithinScreen = true;
+                break;
+            }
+        }
+        if (!isWithinScreen) {
+        	// If the window is not within any screen, reset it to the default position.
+            setBounds(PREF_WINDOW_X_DEF, PREF_WINDOW_Y_DEF, PREF_WINDOW_WIDTH_DEF, PREF_WINDOW_HEIGHT_DEF);
+        }
         jobPanel = new JobPanel(configuration, this);
         panelsPanel = new PanelsPanel(configuration, this);
         boardsPanel = new BoardsPanel(configuration, this);
@@ -544,17 +570,20 @@ public class MainFrame extends JFrame {
         // Add global hotkeys for the arrow keys
         hotkeyActionMap = new HashMap<>();
 
-        int mask = KeyEvent.CTRL_DOWN_MASK;
-
         Toolkit.getDefaultToolkit().getSystemEventQueue().push(new EventQueue() {
             @Override
             protected void dispatchEvent(AWTEvent event) {
                 if (event instanceof KeyEvent) {
-                    KeyStroke ks = KeyStroke.getKeyStrokeForEvent((KeyEvent) event);
-                    Action action = hotkeyActionMap.get(ks);
-                    if (action != null && action.isEnabled()) {
-                        action.actionPerformed(null);
-                        return;
+                    // Skip hotkey processing if a text input component has focus.
+                    // This prevents accidental machine motion when editing text
+                    // (e.g., using Ctrl+Shift+Arrow to select words).
+                    if (!UiUtils.isTextInputFocused()) {
+                        KeyStroke ks = KeyStroke.getKeyStrokeForEvent((KeyEvent) event);
+                        Action action = hotkeyActionMap.get(ks);
+                        if (action != null && action.isEnabled()) {
+                            action.actionPerformed(null);
+                            return;
+                        }
                     }
                 }
                 super.dispatchEvent(event);
@@ -628,28 +657,31 @@ public class MainFrame extends JFrame {
         mnCommands.add(new JMenuItem(machineControlsPanel.homeAction));
         mnCommands.add(new JMenuItem(machineControlsPanel.startStopMachineAction));
 
-        hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, mask),
-                machineControlsPanel.getJogControlsPanel().yPlusAction);
-        hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, mask),
-                machineControlsPanel.getJogControlsPanel().yMinusAction);
-        hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, mask),
-                machineControlsPanel.getJogControlsPanel().xMinusAction);
-        hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, mask),
-                machineControlsPanel.getJogControlsPanel().xPlusAction);
-        hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_QUOTE, mask),
-                machineControlsPanel.getJogControlsPanel().zPlusAction);
-        hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_SLASH, mask),
-                machineControlsPanel.getJogControlsPanel().zMinusAction);
-        hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_COMMA, mask),
-                machineControlsPanel.getJogControlsPanel().cPlusAction);
-        hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_PERIOD, mask),
-                machineControlsPanel.getJogControlsPanel().cMinusAction);
-        hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, mask),
-                machineControlsPanel.getJogControlsPanel().lowerIncrementAction);
-        hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, mask),
-                machineControlsPanel.getJogControlsPanel().raiseIncrementAction);
-        hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_H, mask),
-                machineControlsPanel.homeAction);
+        int[] ctrl_shift_mask = {KeyEvent.CTRL_DOWN_MASK, KeyEvent.CTRL_DOWN_MASK | KeyEvent.SHIFT_DOWN_MASK};
+        for (int mask : ctrl_shift_mask) {
+            hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, mask),
+                    machineControlsPanel.getJogControlsPanel().yPlusAction);
+            hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, mask),
+                    machineControlsPanel.getJogControlsPanel().yMinusAction);
+            hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, mask),
+                    machineControlsPanel.getJogControlsPanel().xMinusAction);
+            hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, mask),
+                    machineControlsPanel.getJogControlsPanel().xPlusAction);
+            hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_QUOTE, mask),
+                    machineControlsPanel.getJogControlsPanel().zPlusAction);
+            hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_SLASH, mask),
+                    machineControlsPanel.getJogControlsPanel().zMinusAction);
+            hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_COMMA, mask),
+                    machineControlsPanel.getJogControlsPanel().cPlusAction);
+            hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_PERIOD, mask),
+                    machineControlsPanel.getJogControlsPanel().cMinusAction);
+            hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, mask),
+                    machineControlsPanel.getJogControlsPanel().lowerIncrementAction);
+            hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, mask),
+                    machineControlsPanel.getJogControlsPanel().raiseIncrementAction);
+            hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_H, mask),
+                    machineControlsPanel.homeAction);
+        }
         hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_R, KeyEvent.CTRL_DOWN_MASK | KeyEvent.SHIFT_DOWN_MASK),
                 jobPanel.startPauseResumeJobAction); // Ctrl-Shift-R for Start
         hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_S, KeyEvent.CTRL_DOWN_MASK | KeyEvent.SHIFT_DOWN_MASK),
@@ -674,7 +706,16 @@ public class MainFrame extends JFrame {
                 machineControlsPanel.getJogControlsPanel().setIncrement4Action);
         hotkeyActionMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_F5, KeyEvent.CTRL_DOWN_MASK | KeyEvent.SHIFT_DOWN_MASK),
                 machineControlsPanel.getJogControlsPanel().setIncrement5Action);
-				
+
+        isShiftDown = false;
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(
+            new KeyEventDispatcher() {
+                public boolean dispatchKeyEvent(KeyEvent e) {
+                    isShiftDown = e.isShiftDown();
+                    return false;
+                }
+            });
+
         tabs = new JTabbedPane(JTabbedPane.TOP);
         splitPaneMachineAndTabs.setRightComponent(tabs);
 
@@ -897,6 +938,9 @@ public class MainFrame extends JFrame {
 
                 @Override
                 public void actionPerformed(ActionEvent e) {
+                    if (tabs.getSelectedComponent() == jobPanel) {
+                        boardsPanel.selectBoard((Board) jobPanel.getSelection().getPlacementsHolder().getDefinition());
+                    }
                     boardsPanel.getBoardPlacementsPanel().importBoard(boardImporter.getClass());
                 }
             });

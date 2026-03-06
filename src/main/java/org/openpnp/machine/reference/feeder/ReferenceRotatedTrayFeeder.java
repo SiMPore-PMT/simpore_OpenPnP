@@ -84,7 +84,7 @@ public class ReferenceRotatedTrayFeeder extends ReferenceFeeder {
             //The previous version of the feeder also had a bug which caused it to skip the first
             //component and thereafter it was picking one component ahead of where it should.
             //This bumps the feedCount up by one to account for that bug.
-            if ((feedCount > 0) && (feedCount < trayCountCols*trayCountRows)) {
+            if ((feedCount > 0) && (feedCount < getEffectiveTrayCountCols()*getEffectiveTrayCountRows())) {
                 feedCount++;
                 legacyPickingInProgress = true;
             }
@@ -105,8 +105,8 @@ public class ReferenceRotatedTrayFeeder extends ReferenceFeeder {
             feedCountBase0 = 0;
         }
         // limit feed count to tray size
-        else if (feedCount > (trayCountCols * trayCountRows)) {
-            feedCountBase0 = trayCountCols * trayCountRows -1;
+        else if (feedCount > (getEffectiveTrayCountCols() * getEffectiveTrayCountRows())) {
+            feedCountBase0 = getEffectiveTrayCountCols() * getEffectiveTrayCountRows() -1;
             Logger.warn("{}.getPickLocation: feedCount larger then tray, limiting to maximum.", getName());
         }
         
@@ -116,16 +116,16 @@ public class ReferenceRotatedTrayFeeder extends ReferenceFeeder {
         //partially completed (not completely full or completely empty), the picking order will
         //revert to the legacy method until the feed count is reset to 0.
         int colNum, rowNum;
-        if (legacyPickingInProgress && (trayCountCols >= trayCountRows)) {
+        if (legacyPickingInProgress && (getEffectiveTrayCountCols() >= getEffectiveTrayCountRows())) {
             //Pick parts along a column (stepping through all the rows) until it is empty and then 
             //move to the next column
-            rowNum = feedCountBase0 % trayCountRows;
-            colNum = feedCountBase0 / trayCountRows;
+            rowNum = feedCountBase0 % getEffectiveTrayCountRows();
+            colNum = feedCountBase0 / getEffectiveTrayCountRows();
         } else {
             //Pick parts along a row (stepping through all the columns) until it is empty and then
             //move to the next row (the new default)
-            rowNum = feedCountBase0 / trayCountCols;
-            colNum = feedCountBase0 % trayCountCols;
+            rowNum = feedCountBase0 / getEffectiveTrayCountCols();
+            colNum = feedCountBase0 % getEffectiveTrayCountCols();
         }
 
         //The definition of the tray has row numbers increasing in the negative y direction so that
@@ -139,8 +139,8 @@ public class ReferenceRotatedTrayFeeder extends ReferenceFeeder {
     public void feed(Nozzle nozzle) throws Exception {
         Logger.debug("{}.feed({})", getName(), nozzle);
 
-        if (feedCount >= (trayCountCols * trayCountRows)) {
-            throw new Exception(this.getName() + " (" + this.partId + ") is empty.");
+        if (feedCount >= (getEffectiveTrayCountCols() * getEffectiveTrayCountRows())) {
+            throw new FeederEmptyException(this.getName() + " (" + this.partId + ") is empty.");
         }
 
         setFeedCount(getFeedCount() + 1);
@@ -153,33 +153,13 @@ public class ReferenceRotatedTrayFeeder extends ReferenceFeeder {
      */
     @Override
     public boolean canTakeBackPart() {
-        if (feedCount > 0 ) {  
-            return true;
-        } else {
-            return false;
-        }
+        return (feedCount > 0);
     }
 
     @Override
     public void takeBackPart(Nozzle nozzle) throws Exception {
-        // first check if we can and want to take back this part (should be always be checked before calling, but to be sure)
-        if (nozzle.getPart() == null) {
-            throw new UnsupportedOperationException("No part loaded that could be taken back.");
-        }
-        if (!nozzle.getPart().equals(getPart())) {
-            throw new UnsupportedOperationException("Feeder: " + getName() + " - Can not take back " + nozzle.getPart().getId() + " this feeder only supports " + getPart().getId());
-        }
-        if (!canTakeBackPart()) {
-            throw new UnsupportedOperationException("Feeder: " + getName() + " - Currently no free slot. Can not take back the part.");
-        }
-
-        // ok, now put the part back on the location of the last pick
-        nozzle.moveToPickLocation(this);
-        nozzle.place();
-        nozzle.moveToSafeZ();
-        if (nozzle.isPartOffEnabled(Nozzle.PartOffStep.AfterPlace) && !nozzle.isPartOff()) {
-            throw new Exception("Feeder: " + getName() + " - Putting part back failed, check nozzle tip");
-        }
+        super.takeBackPart(nozzle);
+        putPartBack(nozzle);
         // change FeedCount
         setFeedCount(getFeedCount() - 1);
     }
@@ -192,8 +172,8 @@ public class ReferenceRotatedTrayFeeder extends ReferenceFeeder {
         int oldValue = this.trayCountCols;
         this.trayCountCols = trayCountCols;
         firePropertyChange("trayCountCols", oldValue, trayCountCols);
-        firePropertyChange("remainingCount", trayCountRows*oldValue - feedCount, 
-                trayCountRows*trayCountCols - feedCount);
+        firePropertyChange("remainingCount", getEffectiveTrayCountRows()*oldValue - feedCount,
+                getEffectiveTrayCountRows()*getEffectiveTrayCountCols() - feedCount);
     }
 
     public int getTrayCountRows() {
@@ -201,11 +181,19 @@ public class ReferenceRotatedTrayFeeder extends ReferenceFeeder {
     }
 
     public void setTrayCountRows(int trayCountRows) {
-        int oldValue = this.trayCountRows;
+        int oldValue = this.getEffectiveTrayCountRows();
         this.trayCountRows = trayCountRows;
-        firePropertyChange("trayCountRows", oldValue, trayCountRows);
-        firePropertyChange("remainingCount", oldValue*trayCountCols - feedCount, 
-                trayCountRows*trayCountCols - feedCount);
+        firePropertyChange("trayCountRows", oldValue, getEffectiveTrayCountRows());
+        firePropertyChange("remainingCount", oldValue*getEffectiveTrayCountCols() - feedCount,
+                getEffectiveTrayCountRows()*getEffectiveTrayCountCols() - feedCount);
+    }
+
+    public int getEffectiveTrayCountRows() {
+        return Math.max(trayCountRows,1);
+    }
+
+    public int getEffectiveTrayCountCols() {
+        return Math.max(trayCountCols,1);
     }
 
     public Location getLastComponentLocation() {
@@ -243,13 +231,13 @@ public class ReferenceRotatedTrayFeeder extends ReferenceFeeder {
             legacyPickingInProgress = false;
         }
         firePropertyChange("feedCount", oldValue, feedCount);
-        firePropertyChange("remainingCount", trayCountRows*trayCountCols - oldValue, 
-                trayCountRows*trayCountCols - feedCount);
+        firePropertyChange("remainingCount", getEffectiveTrayCountRows()*getEffectiveTrayCountCols() - oldValue,
+                getEffectiveTrayCountRows()*getEffectiveTrayCountCols() - feedCount);
         Logger.debug("{}.setFeedCount(): feedCount {}, pickLocation {}", getName(), feedCount, getPickLocation());
     }
 
     public int getRemainingCount() {
-        return trayCountRows*trayCountCols - feedCount;
+        return getEffectiveTrayCountRows()*getEffectiveTrayCountCols() - feedCount;
     }
 
     public double getComponentRotationInTray() {

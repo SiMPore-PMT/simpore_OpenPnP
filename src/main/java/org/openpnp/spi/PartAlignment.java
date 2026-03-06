@@ -40,7 +40,7 @@ public interface PartAlignment extends PartSettingsHolder, Named, Solutions.Subj
         }
 
         public String toString() {
-            return "offset ( location: " + location.toString() + " pre-rotated" + Boolean.toString(preRotated) + ")";
+            return "offset ( location: " + location.toString() + " pre-rotated " + Boolean.toString(preRotated) + ")";
         }
     }
 
@@ -57,6 +57,18 @@ public interface PartAlignment extends PartSettingsHolder, Named, Solutions.Subj
      */
     PartAlignmentOffset findOffsets(Part part, BoardLocation boardLocation, Placement placement, Nozzle nozzle) throws Exception;
     
+    /**
+     * Return the location where the alignment will take place.
+     * 
+     * @param part
+     * @param boardLocation
+     * @param placement
+     * @param nozzle
+     * @return
+     * @throws Exception
+     */
+    Location getLocation(Part part, BoardLocation boardLocation, Placement placement, Nozzle nozzle) throws Exception;
+
     /**
      * Get a Wizard for configuring the PartAlignment instance properties for a specific
      * PartSettingsHolder (Part or Package).

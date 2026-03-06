@@ -3,6 +3,8 @@ package org.openpnp.scripting;
 import java.io.File;
 import java.io.FileReader;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,10 +36,12 @@ public class Scripting {
     private final File eventsDirectory;
     private final HashMap<String, String> extensionToEngineNameMap;
     private final GenericKeyedObjectPool<String, ScriptEngine> enginePool;
+    private final HashSet<String> eventsWithoutScripts;
 
     public Scripting(File scriptsDirectory) {
         this.scriptsDirectory = scriptsDirectory;
         extensionToEngineNameMap = new HashMap<>();
+        eventsWithoutScripts = new HashSet<>();
         enginePool = new GenericKeyedObjectPool<>(
                 new ScriptEngineKeyedPooledObjectFactory(this.manager));
         // Allow unlimited engines, but evict all but five per key after a short idle time
@@ -136,6 +140,10 @@ public class Scripting {
 
     public void execute(File script, Map<String, Object> additionalGlobals) throws Exception {
         String extension = Files.getFileExtension(script.getName());
+        String engineName = extensionToEngineNameMap.get(extension);
+        if(engineName==null) {
+            throw new Exception("Unknown scripting engine for "+extension);
+        }
         boolean usePool = Configuration.get()
                                        .getMachine()
                                        .isPoolScriptingEngines();
@@ -145,15 +153,21 @@ public class Scripting {
 
         if (usePool) {
             startTimeNs = System.nanoTime();
-            engine = enginePool.borrowObject(extensionToEngineNameMap.get(extension));
+            engine = enginePool.borrowObject(engineName);
+            if(engine==null) {
+                throw new Exception("Failed to borrow "+engineName+" scripting engine");
+            }
             elapsedTimeNs = System.nanoTime() - startTimeNs;
             Logger.trace(engine + " scripting engine borrowed from pool in " + elapsedTimeNs / 1E6
                     + " milliseconds");
         }
         else {
             startTimeNs = System.nanoTime();
-            engine = manager.getEngineByName(extensionToEngineNameMap.get(extension));
+            engine = manager.getEngineByName(engineName);
             elapsedTimeNs = System.nanoTime() - startTimeNs;
+            if(engine==null) {
+                throw new Exception("Failed to create "+engineName+" scripting engine");
+            }
             Logger.trace("Engine pooling disabled, " + engine + " scripting engine loaded in "
                     + elapsedTimeNs / 1E6 + " milliseconds");
         }
@@ -202,24 +216,66 @@ public class Scripting {
         }
     }
 
+    // This function returns false if event has some scripts, or if we do not yet know.
+    // It returns true if and only if we have found there to be no scripts
+    // associated with this event
+    public Boolean hasNoScript(String event) {
+        if (eventsDirectory == null) {
+            return true;
+        }
+
+        if(eventsWithoutScripts.contains(event)) {
+            // We know for certain that this event will not run any scripts.
+            // This might enable some optimisation where a client can avoid
+            // preparing all the script parameters if it knows there is no
+            // script to receive them.
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     public void on(String event, Map<String, Object> globals) throws Exception {
         Logger.trace("Scripting.on " + event);
         if (eventsDirectory == null) {
             return;
         }
-        for (File script : FileUtils.listFiles(eventsDirectory, getExtensions(), false)) {
+        if (hasNoScript(event)) {
+            return;
+        }
+        Boolean foundEventScript = false;
+        ArrayList<File> sortedFiles = new ArrayList<File>(FileUtils.listFiles(eventsDirectory, getExtensions(), false));
+        Collections.sort(sortedFiles, new Comparator<File>() {
+            @Override
+            public int compare(File a, File b) {
+                return a.getName().compareTo(b.getName());
+            }});
+        for (File script : sortedFiles) {
             if (!script.isFile()) {
                 continue;
             }
-            if (FilenameUtils.getBaseName(script.getName())
-                             .equals(event)) {
+            String baseName = FilenameUtils.getBaseName(script.getName());
+            if (baseName.equals(event) || baseName.startsWith(event+".")) {
                 Logger.trace("Scripting.on found " + script.getName());
+                foundEventScript = true;
                 execute(script, globals);
             }
         }
+        if (!foundEventScript) {
+            // Remember that this event does not have any scripts. This saves
+            // having to iterate over the directory when the same event
+            // is triggered subsequently
+            eventsWithoutScripts.add(event);
+        }
+    }
+
+    public Boolean enableClearScriptingEnginePool() {
+        return (getScriptingEnginePoolObjectCount() > 0) || (!eventsWithoutScripts.isEmpty());
     }
 
     public void clearScriptingEnginePool() {
+        eventsWithoutScripts.clear();
+
         if (enginePool.listAllObjects()
                       .size() == 0) {
             Logger.info("No scripting engines in pool, nothing to do");

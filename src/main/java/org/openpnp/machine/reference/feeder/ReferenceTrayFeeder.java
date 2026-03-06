@@ -19,8 +19,6 @@
 
 package org.openpnp.machine.reference.feeder;
 
-
-
 import javax.swing.Action;
 
 import org.openpnp.gui.support.Wizard;
@@ -51,6 +49,7 @@ public class ReferenceTrayFeeder extends ReferenceFeeder {
     @Attribute
     private int feedCount = 0;  // UI is base 1, 0 is ok because a pick operation always preceded by a feed, which increments feedCount to 1
 
+
     @Override
     public Location getPickLocation() {
         int partX, partY;
@@ -63,20 +62,20 @@ public class ReferenceTrayFeeder extends ReferenceFeeder {
             feedCountBase0 = 0;
         }
         // limit feed count to tray size
-        else if (feedCount > (trayCountX * trayCountY)) {
-            feedCountBase0 = trayCountX * trayCountY -1;
+        else if (feedCount > (getEffectiveTrayCountX() * getEffectiveTrayCountY())) {
+            feedCountBase0 = getEffectiveTrayCountX() * getEffectiveTrayCountY() -1;
             Logger.warn("{}.getPickLocation: feedCount larger then tray, limiting to maximum.", getName());
         }
 
-        if (trayCountX >= trayCountY) {
+        if (getEffectiveTrayCountX() >= getEffectiveTrayCountY()) {
             // X major axis.
-            partX = feedCountBase0 / trayCountY;
-            partY = feedCountBase0 % trayCountY;
+            partX = feedCountBase0 / getEffectiveTrayCountY();
+            partY = feedCountBase0 % getEffectiveTrayCountY();
         }
         else {
             // Y major axis.
-            partX = feedCountBase0 % trayCountX;
-            partY = feedCountBase0 / trayCountX;
+            partX = feedCountBase0 % getEffectiveTrayCountX();
+            partY = feedCountBase0 / getEffectiveTrayCountX();
         }
 
         // Multiply the offsets by the X/Y part indexes to get the total offsets
@@ -88,11 +87,16 @@ public class ReferenceTrayFeeder extends ReferenceFeeder {
     public void feed(Nozzle nozzle) throws Exception {
         Logger.debug("{}.feed({})", getName(), nozzle);
 
-        if (feedCount >= (trayCountX * trayCountY)) {
-            throw new Exception("Feeder: " + getName() + " (" + getPart().getId() + ") - tray empty.");
+        if (feedCount >= (getEffectiveTrayCountX() * getEffectiveTrayCountY())) {
+            throw new FeederEmptyException("Feeder: " + getName() + " (" + getPart().getId() + ") - tray empty.");
         }
 
-        setFeedCount(getFeedCount() + 1);
+        if (getFeedOptions() == FeedOptions.Normal || getFeedCount() == 0) {
+            setFeedCount(getFeedCount() + 1);
+        }
+        if (getFeedOptions() == FeedOptions.SkipNext) {
+            setFeedOptions(FeedOptions.Normal);
+        }
     }
 
     /**
@@ -102,35 +106,17 @@ public class ReferenceTrayFeeder extends ReferenceFeeder {
      */
     @Override
     public boolean canTakeBackPart() {
-        if (feedCount > 0 ) {  
-            return true;
-        } else {
-            return false;
-        }
+        return (feedCount > 0);
     }
 
     @Override
     public void takeBackPart(Nozzle nozzle) throws Exception {
-        // first check if we can and want to take back this part (should be always be checked before calling, but to be sure)
-        if (nozzle.getPart() == null) {
-            throw new UnsupportedOperationException("No part loaded that could be taken back.");
-        }
-        if (!nozzle.getPart().equals(getPart())) {
-            throw new UnsupportedOperationException("Feeder: " + getName() + " - Can not take back " + nozzle.getPart().getId() + " this feeder only supports " + getPart().getId());
-        }
-        if (!canTakeBackPart()) {
-            throw new UnsupportedOperationException("Feeder: " + getName() + " - Currently no free slot. Can not take back the part.");
-        }
-        
-        // ok, now put the part back on the location of the last pick
-        nozzle.moveToPickLocation(this);
-        nozzle.place();
-        nozzle.moveToSafeZ();
-        if (nozzle.isPartOffEnabled(Nozzle.PartOffStep.AfterPlace) && !nozzle.isPartOff()) {
-            throw new Exception("Feeder: " + getName() + " - Putting part back failed, check nozzle tip");
-        }
+        super.takeBackPart(nozzle);
+        putPartBack(nozzle);
         // change FeedCount
-        setFeedCount(getFeedCount() - 1);
+        if (getFeedOptions() == FeedOptions.Normal) {
+            setFeedCount(getFeedCount() - 1);
+        }
     }
 
     
@@ -148,6 +134,14 @@ public class ReferenceTrayFeeder extends ReferenceFeeder {
 
     public void setTrayCountY(int trayCountY) {
         this.trayCountY = trayCountY;
+    }
+
+    public int getEffectiveTrayCountX() {
+        return Math.max(trayCountX,1);
+    }
+
+    public int getEffectiveTrayCountY() {
+        return Math.max(trayCountY,1);
     }
 
     public Location getOffsets() {
@@ -192,5 +186,10 @@ public class ReferenceTrayFeeder extends ReferenceFeeder {
     @Override
     public Action[] getPropertySheetHolderActions() {
         return null;
+    }
+
+    @Override
+    public boolean supportsFeedOptions() {
+        return true;
     }
 }

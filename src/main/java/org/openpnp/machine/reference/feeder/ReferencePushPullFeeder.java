@@ -160,6 +160,17 @@ public class ReferencePushPullFeeder extends ReferenceFeeder {
     protected boolean includedPull3 = false; 
 
     @Attribute(required = false)
+    protected int delay0 = 0;
+    @Attribute(required = false)
+    protected int delay1 = 0;
+    @Attribute(required = false)
+    protected int delay2 = 0;
+    @Attribute(required = false)
+    protected int delay3 = 0;
+    @Attribute(required = false)
+    protected int delay4 = 0;
+
+    @Attribute(required = false)
     protected boolean additiveRotation = true;
 
     @Attribute(required = false)
@@ -372,6 +383,13 @@ public class ReferencePushPullFeeder extends ReferenceFeeder {
                     getName()));
         }
 
+        if (getFeedOptions() != FeedOptions.Normal) {
+            if (getFeedOptions() == FeedOptions.SkipNext) {
+                setFeedOptions(FeedOptions.Normal);
+            }
+            return;
+        }
+
         if (getFeedCount() % getPartsPerFeedCycle() == 0) {
             // Modulo of feed count is zero - no more parts there to pick, must feed 
 
@@ -422,15 +440,19 @@ public class ReferencePushPullFeeder extends ReferenceFeeder {
                 // Push the lever by following the path of locations
                 if (includedPush1 && (isFirst || includedMulti1)) {
                     actuator.moveTo(feedMid1Location, feedSpeedPush1*baseSpeed);
+                    doDelay(delay1);
                 }
                 if (includedPush2 && (isFirst || includedMulti2)) {
                     actuator.moveTo(feedMid2Location, feedSpeedPush2*baseSpeed);
+                    doDelay(delay2);
                 }
                 if (includedPush3 && (isFirst || includedMulti3)) {
                     actuator.moveTo(feedMid3Location, feedSpeedPush3*baseSpeed);
+                    doDelay(delay3);
                 }
                 if (includedPushEnd && (isFirst || includedMultiEnd)) {
                     actuator.moveTo(feedEndLocation, feedSpeedPushEnd*baseSpeed);
+                    doDelay(delay4);
                 }
 
                 // Start the take up actuator
@@ -441,15 +463,19 @@ public class ReferencePushPullFeeder extends ReferenceFeeder {
                 // Now move back to the start location to move the tape.
                 if (includedPull3 && (isLast || includedMulti3)) {
                     actuator.moveTo(feedMid3Location, feedSpeedPull3 * baseSpeed);
+                    doDelay(delay3);
                 }
                 if (includedPull2 && (isLast || includedMulti2)) {
                     actuator.moveTo(feedMid2Location, feedSpeedPull2 * baseSpeed);
+                    doDelay(delay2);
                 }
                 if (includedPull1 && (isLast || includedMulti1)) {
                     actuator.moveTo(feedMid1Location, feedSpeedPull1*baseSpeed);
+                    doDelay(delay1);
                 }
                 if (includedPull0 && (isLast || includedMulti0)) {
                     actuator.moveTo(feedStartLocation, feedSpeedPull0*baseSpeed);
+                    doDelay(delay0);
                 }
 
                 // Stop the take up actuator
@@ -492,6 +518,26 @@ public class ReferencePushPullFeeder extends ReferenceFeeder {
         setFeedCount(getFeedCount()+1);
     }
 
+    // This handles a delay after arriving at a push/pull point
+    private void doDelay(int delay) throws Exception {
+        int maximumDelay = 5000; // 5 seconds
+
+        if (delay<=0) {
+            return; // without any delay
+        } else {
+            if (delay>maximumDelay) {
+                delay = maximumDelay;
+            }
+            actuator.delay(delay);
+        }
+    }
+
+    public void discardParts() {
+        // round the feed count up to the next multiple of the parts per feed operation
+        setFeedCount(((getFeedCount()-1)/getPartsPerFeedCycle()+1)*getPartsPerFeedCycle());
+        resetCalibration();
+    }
+
     public void ensureCameraZ(Camera camera, boolean setZ) throws Exception {
         if (camera.isUnitsPerPixelAtZCalibrated()
                 && !getLocation().getLengthZ().isInitialized()) {
@@ -516,6 +562,23 @@ public class ReferencePushPullFeeder extends ReferenceFeeder {
             }
             performVisionOperations(camera, pipeline, false, false, true, ocrAction, ocrStop, null);
         }
+    }
+
+    @Override
+    public boolean canTakeBackPart() {
+        return getFeedOptions() != FeedOptions.SkipNext;
+    }
+
+    @Override
+    public void takeBackPart(Nozzle nozzle) throws Exception {
+        super.takeBackPart(nozzle);
+        putPartBack(nozzle);
+        setFeedOptions(FeedOptions.SkipNext);
+    }
+
+    @Override
+    public boolean supportsFeedOptions() {
+        return true;
     }
 
     @Override
@@ -764,6 +827,56 @@ public class ReferencePushPullFeeder extends ReferenceFeeder {
         Object oldValue = this.feedSpeedPull0;
         this.feedSpeedPull0 = feedSpeedPull0;
         firePropertyChange("feedSpeedPull0", oldValue, feedSpeedPull0);
+    }
+
+    public int getDelay0() {
+        return delay0;
+    }
+
+    public void setDelay0(int delay0) {
+        Object oldValue = this.delay0;
+        this.delay0 = delay0;
+        firePropertyChange("delay0", oldValue, delay0);
+    }
+
+    public int getDelay1() {
+        return delay1;
+    }
+
+    public void setDelay1(int delay1) {
+        Object oldValue = this.delay1;
+        this.delay1 = delay1;
+        firePropertyChange("delay1", oldValue, delay1);
+    }
+
+    public int getDelay2() {
+        return delay2;
+    }
+
+    public void setDelay2(int delay2) {
+        Object oldValue = this.delay2;
+        this.delay2 = delay2;
+        firePropertyChange("delay2", oldValue, delay2);
+    }
+
+    public int getDelay3() {
+        return delay3;
+    }
+
+    public void setDelay3(int delay3) {
+        Object oldValue = this.delay3;
+        this.delay3 = delay3;
+        firePropertyChange("delay3", oldValue, delay3);
+    }
+
+    public int getDelay4() {
+        return delay4;
+    }
+
+    public void setDelay4(int delay4) {
+        Object oldValue = this.delay4;
+        this.delay4 = delay4;
+        firePropertyChange("delay4", oldValue, delay4);
     }
 
     public boolean isIncludedPush1() {
@@ -1486,10 +1599,13 @@ public class ReferencePushPullFeeder extends ReferenceFeeder {
                     if (n++ > 0) {
                         status += ",<br/>";
                     }
+                    else {
+                        status += "<br/>";
+                    }
                     status += targetFeeder.getName()+" "+targetFeeder.getPart().getId();
                 }
             }
-            status += n == 0 ? "none." : " (Count: "+n+")";
+            status += n == 0 ? "none." : "<br/>(Count: "+n+")";
         }
         else {
             ReferencePushPullFeeder templateFeeder = getTemplateFeeder(null);
@@ -1590,6 +1706,12 @@ public class ReferencePushPullFeeder extends ReferenceFeeder {
             setIncludedMulti2(templateFeeder.isIncludedMulti2());
             setIncludedMulti3(templateFeeder.isIncludedMulti3());
             setIncludedMultiEnd(templateFeeder.isIncludedMultiEnd());
+            // clone all the delays
+            setDelay0(templateFeeder.getDelay0());
+            setDelay1(templateFeeder.getDelay1());
+            setDelay2(templateFeeder.getDelay2());
+            setDelay3(templateFeeder.getDelay3());
+            setDelay4(templateFeeder.getDelay4());
         }
         if (cloneVisionSettings) {
             // other settings
