@@ -21,6 +21,7 @@ import org.openpnp.spi.CoordinateAxis;
 import org.openpnp.spi.Head;
 import org.openpnp.spi.Nozzle;
 import org.openpnp.spi.NozzleTip;
+import org.openpnp.spi.Feeder;
 import org.openpnp.util.Utils2D;
 import org.pmw.tinylog.Logger;
 import org.simpleframework.xml.Attribute;
@@ -63,6 +64,8 @@ public abstract class AbstractNozzle extends AbstractHeadMountable implements No
     protected Head head;
 
     protected Part part;
+
+    protected Feeder partsFeeder;
 
     protected Double rotationModeOffset;
 
@@ -116,6 +119,17 @@ public abstract class AbstractNozzle extends AbstractHeadMountable implements No
     @Override
     public Part getPart() {
         return part;
+    }
+
+    protected void setPartsFeeder(Feeder feeder) {
+        Object oldValue = this.partsFeeder;
+        this.partsFeeder = feeder;
+        firePropertyChange("partsFeeder", oldValue, feeder);
+    }
+
+    @Override
+    public Feeder getPartsFeeder() {
+        return partsFeeder;
     }
 
     @Override
@@ -190,7 +204,7 @@ public abstract class AbstractNozzle extends AbstractHeadMountable implements No
                 newRotationModeOffset = placementLocation.getRotation();
                 break;
             case MinimalRotation:
-                newRotationModeOffset = Utils2D.angleNorm(getLocation().getRotation() - pickLocation.getRotation(), 180);
+                newRotationModeOffset = Utils2D.angleNorm(pickLocation.getRotation() - getLocation().getRotation(), 180);
                 break;
             case LimitedArticulation:
                 double [] rotationLimits = getRotationModeLimits();
@@ -234,7 +248,7 @@ public abstract class AbstractNozzle extends AbstractHeadMountable implements No
         Object oldValue = this.rotationModeOffset;
         this.rotationModeOffset = rotationModeOffset;
         firePropertyChange("rotationModeOffset", oldValue, rotationModeOffset);
-        Logger.trace("Set rotation mode offset: "+(rotationModeOffset != null ? rotationModeOffset+"°." : "none."));
+        Logger.trace("Nozzle " + getName() + ": set rotation mode offset: "+(rotationModeOffset != null ? rotationModeOffset+"°." : "none."));
         // Note, we do not 
         //  fireMachineHeadActivity(head); 
         // as only the upcoming coordinate changes will really make sense and matter.

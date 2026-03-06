@@ -349,7 +349,7 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
     }
 
     @Override
-    public void pick(Part part) throws Exception {
+    public void pick(Part part,Feeder feeder) throws Exception {
         Logger.debug("{}.pick()", getName());
         if (part == null) {
             throw new Exception("Can't pick null part");
@@ -364,6 +364,7 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
         Configuration.get().getScripting().on("Nozzle.BeforePick", globals);
 
         setPart(part);
+        setPartsFeeder(feeder);
 
         // if the method needs it, store one measurement up front
         storeBeforePickVacuumLevel();
@@ -428,6 +429,7 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
         establishPlaceVacuumLevel(this.getPlaceDwellMilliseconds() + nozzleTip.getPlaceDwellMilliseconds());
 
         setPart(null);
+        setPartsFeeder(null);
         getMachine().fireMachineHeadActivity(head);
 
         Configuration.get().getScripting().on("Nozzle.AfterPlace", globals);
@@ -542,7 +544,7 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
                 return nozzleTip.getMaxPartHeight();
             }
             else {
-                return part.getHeight();
+                return part.getHeightForSafeZ();
             }
         }
         return new Length(0, LengthUnit.Millimeters);
@@ -1142,7 +1144,7 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
         else {
             // simple method, just dwell
             Logger.trace(getName()+" dwell for pick vacuum "+milliseconds+"ms");
-            Thread.sleep(milliseconds);
+            delay(milliseconds);
         }
     }
 
@@ -1177,7 +1179,7 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
         else {
             // simple method, just dwell
             Logger.trace(getName()+" dwell for place vacuum dissipation "+milliseconds+"ms");
-            Thread.sleep(milliseconds);
+            delay(milliseconds);
         }
     }
 
@@ -1236,7 +1238,7 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
             else {
                 // simple method, just dwell 
                 Logger.trace(getName()+" dwell for part off probing, open valve "+probingMilliseconds+"ms");
-                Thread.sleep(probingMilliseconds);
+                delay(probingMilliseconds);
                 if (dwellMilliseconds <= 0) {
                     returnedVacuumLevel = readVacuumLevel();
                 }
@@ -1275,12 +1277,21 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
             // simple method, just dwell and then read the level
             if (dwellMilliseconds > 0) {
                 Logger.trace(getName()+" dwell for part off probing, closed valve "+dwellMilliseconds+"ms");
-                Thread.sleep(dwellMilliseconds);
+                delay(dwellMilliseconds);
                 returnedVacuumLevel = readVacuumLevel();
             }
             // return the vacuum level, either from before or after valve closed
             return returnedVacuumLevel;
         }
+    }
+
+    /**
+     * Delay for a given time in milliseconds and take the respective vacuum valve into account.
+     * @param milliseconds
+     * @throws Exception 
+     */
+    private void delay(int milliseconds) throws Exception  {
+        delay(milliseconds, getExpectedVacuumActuator());
     }
 
     @Override

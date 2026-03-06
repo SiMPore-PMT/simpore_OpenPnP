@@ -42,6 +42,7 @@ import org.openpnp.model.PlacementsHolder;
 import org.openpnp.model.PlacementsHolderLocation;
 import org.openpnp.model.Point;
 import org.openpnp.spi.Camera;
+import org.openpnp.spi.CameraBatchOperation;
 import org.openpnp.spi.FiducialLocator;
 import org.openpnp.spi.PropertySheetHolder;
 import org.openpnp.util.IdentifiableList;
@@ -126,7 +127,20 @@ public class ReferenceFiducialLocator extends AbstractPartSettingsHolder impleme
      * @return compensated board location of last PlacementsHolderLocation processed (in list)
      */
     public Location locateAllPlacementsHolder(List<PlacementsHolderLocation<?>> allPlacementsHolderLocation, Location endLocation) throws Exception {
-
+        CameraBatchOperation cbo = Configuration.get().getMachine().getCameraBatchOperation();
+        if (cbo!=null) {
+            cbo.startBatchOperation("fid");
+        }
+        try {
+            return locateAllPlacementsHolderInBatch(allPlacementsHolderLocation,endLocation);
+        }
+        finally {
+            if(cbo!=null) {
+                cbo.endBatchOperation("fid");
+            }
+        }
+    }
+    public Location locateAllPlacementsHolderInBatch(List<PlacementsHolderLocation<?>> allPlacementsHolderLocation, Location endLocation) throws Exception {
         // collect all placementsHolderLocations with their fiducials into new classes grouping
         // required data to process the following steps in an optimized order
         List<PlacementsHolderLocationWithFiducials> allPlacementsHolderLocationWithFiducials = new ArrayList<PlacementsHolderLocationWithFiducials>();
@@ -529,7 +543,10 @@ public class ReferenceFiducialLocator extends AbstractPartSettingsHolder impleme
             Rectangle2D bounds = footprint.getPadsShape().getBounds2D();
             Length diameter = new Length(Math.max(bounds.getWidth(), bounds.getHeight()), footprint.getUnits());
             pipeline.setProperty("fiducial.diameter", diameter);
-            pipeline.setProperty("fiducial.maxDistance", getMaxDistance());
+            if(pipeline.getStage("maxDistance")==null) {
+                Logger.info("Setting maxDistance override because this pipeline does not have a maxDistance stage");
+                pipeline.setProperty("fiducial.maxDistance", getMaxDistance());
+            }
         }
         pipeline.addProperties(pipelineParameterAssignments);
     }
@@ -557,12 +574,12 @@ public class ReferenceFiducialLocator extends AbstractPartSettingsHolder impleme
         try(CvPipeline pipeline = getFiducialPipeline(camera, partSettingsHolder, nominalLocation)) {
             int repeatFiducialRecognition = visionSettings.getMaxVisionPasses();
             for (int i = 0; i < repeatFiducialRecognition; i++) {
-                Location newLocation = detectFiducialFromViewpoint(camera, location, pipeline,
+                Location newLocation = detectFiducialFromViewpoint(camera, nominalLocation, pipeline,
                         partSettingsHolder);
                 if (parallaxOperation) {
                     Location viewPointLocation2 = location.subtract(parallaxDisplacement);
                     camera.moveTo(viewPointLocation2);
-                    Location newLocation2 = detectFiducialFromViewpoint(camera, location, pipeline,
+                    Location newLocation2 = detectFiducialFromViewpoint(camera, nominalLocation, pipeline,
                             partSettingsHolder);
                     // Mid-point is the detected location, canceling out any errors.
                     newLocation = newLocation.add(newLocation2).multiply(0.5);
@@ -604,9 +621,6 @@ public class ReferenceFiducialLocator extends AbstractPartSettingsHolder impleme
                     sumY / matchedLocations.size(), null, null);
 
             Logger.debug("{} averaged location is at {}", partSettingsHolder.getId(), location);
-        }
-        if (location.convertToUnits(maxDistance.getUnits()).getLinearDistanceTo(nominalLocation) > maxDistance.getValue()) {
-            throw new Exception("Fiducial "+partSettingsHolder.getShortName()+ " detected too far away.");
         }
         return location;
     }
