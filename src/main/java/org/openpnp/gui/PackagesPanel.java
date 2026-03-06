@@ -55,6 +55,8 @@ import javax.swing.JTextField;
 import javax.swing.JToolBar;
 import javax.swing.ListSelectionModel;
 import javax.swing.RowFilter;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.event.ListSelectionEvent;
@@ -64,7 +66,9 @@ import javax.swing.table.TableRowSorter;
 import org.openpnp.Translations;
 import org.openpnp.gui.components.AutoSelectTextTable;
 import org.openpnp.gui.components.CameraView;
-import org.openpnp.gui.support.AbstractConfigurationWizard;
+import org.openpnp.gui.components.reticle.FootprintReticle;
+import org.openpnp.gui.components.reticle.Reticle;
+import org.openpnp.gui.support.AbstractConfigurationWizard; //Prolly should be removed, this may have been a problem child for the footprint reticle not showing
 import org.openpnp.gui.support.ActionGroup;
 import org.openpnp.gui.support.Helpers;
 import org.openpnp.gui.support.Icons;
@@ -113,6 +117,9 @@ public class PackagesPanel extends JPanel implements WizardContainer {
     private ActionGroup multiSelectionActionGroup;
     private JTabbedPane tabbedPane;
     private Package selectedPackage;
+
+    private final String visionTabTitle =
+            Translations.getString("PackagesPanel.VisionTab.title"); //$NON-NLS-1$
 
     public PackagesPanel(Configuration configuration, Frame frame) {
         this.configuration = configuration;
@@ -255,6 +262,18 @@ public class PackagesPanel extends JPanel implements WizardContainer {
                 }
                 catch (Exception e1) {
                 }
+            }
+
+            @Override
+            public void componentShown(ComponentEvent e) {
+                updateFootprintReticle();
+            }
+        });
+
+        tabbedPane.addChangeListener(new ChangeListener() {
+            @Override
+            public void stateChanged(ChangeEvent e) {
+                updateFootprintReticle();
             }
         });
     }
@@ -530,6 +549,31 @@ public class PackagesPanel extends JPanel implements WizardContainer {
 
         revalidate();
         repaint();
+
+        updateFootprintReticle();
+    }
+
+    private void updateFootprintReticle() {
+        try {
+            Camera camera = Configuration.get().getMachine().getDefaultHead().getDefaultCamera();
+            CameraView cameraView = MainFrame.get().getCameraViews().getCameraView(camera);
+            if (cameraView == null) {
+                return;
+            }
+            int selectedIndex = tabbedPane.getSelectedIndex();
+            if (tabbedPane.getTabCount() == 0
+                    || selectedIndex < 0
+                    || !visionTabTitle.equals(tabbedPane.getTitleAt(selectedIndex))
+                    || selectedPackage == null) {
+                cameraView.removeReticle(PackageVisionPanel.class.getName());
+                return;
+            }
+            Reticle reticle = new FootprintReticle(selectedPackage.getFootprint());
+            cameraView.setReticle(PackageVisionPanel.class.getName(), reticle);
+        }
+        catch (Exception e) {
+            // Ignore exceptions, as this is only a visual aid.
+        }
     }
 
     public void selectPackageInTable(Package packag) {
@@ -538,3 +582,6 @@ public class PackagesPanel extends JPanel implements WizardContainer {
         }
     }
 }
+/**
+ * DAK - Added a Packages panel reticle refresh path so the footprint overlay is re-applied when the Vision tab is active and removed when it is not.
+ */
