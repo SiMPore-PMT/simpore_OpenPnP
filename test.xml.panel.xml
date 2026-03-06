@@ -1,6 +1,0 @@
-<openpnp-panel name="test.xml.panel.xml" version="2.0">
-   <dimensions units="Millimeters" x="0.0" y="0.0" z="0.0" rotation="0.0"/>
-   <placements/>
-   <children/>
-   <pseudo-placement-ids/>
-</openpnp-panel>
