@@ -592,8 +592,8 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
 
     @Override
     public void validateInput() throws Exception {
-        if (wizardFeedCount < 0) setwizardFeedCount(0);
-        if (wizardFeedCount > nCols * nRows) setwizardFeedCount(nCols * nRows);
+        if (wizardFeedCount < 0){ setwizardFeedCount(0);}
+        if (wizardFeedCount > nCols * nRows){ setwizardFeedCount(nCols * nRows); }
 
         Location offRot = calculateOffsetsAndRotation().convertToUnits(VALIDATION_UNITS);
 
