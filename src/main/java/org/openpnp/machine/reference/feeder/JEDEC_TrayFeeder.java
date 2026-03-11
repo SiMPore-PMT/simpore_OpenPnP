@@ -115,7 +115,12 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         lastLocation = pickLocation;
         pickLocation = null;
 
-        while(pickLocation == null || (feedCount <= (trayCountCols * trayCountRows))){
+        int trayCapacity = getEffectiveTrayCountCols() * getEffectiveTrayCountRows();
+        if (feedCount >= trayCapacity) {
+            throw new FeederEmptyException(this.getName() + " (" + this.partId + ") is empty.");
+        }
+
+        while (pickLocation == null && feedCount < trayCapacity) {
             //Inc feed count
             setFeedCount(getFeedCount() + 1);
 
@@ -130,8 +135,8 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
                 //If we failed, we are incramenting by one and going to the next location.
             }
         }
-        if (feedCount >= (trayCountCols * trayCountRows)) {
-            throw new Exception(this.getName() + " (" + this.partId + ") is empty.");
+        if (pickLocation == null) {
+            throw new FeederEmptyException(this.getName() + " (" + this.partId + ") is empty.");
         }
     }
 
@@ -288,6 +293,10 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         return trayCountCols;
     }
 
+    public int getEffectiveTrayCountCols() {
+        return Math.max(trayCountCols, 1);
+    }
+
     public void setTrayCountCols(int trayCountCols) {
         int oldValue = this.trayCountCols;
         this.trayCountCols = trayCountCols;
@@ -298,6 +307,10 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
 
     public int getTrayCountRows() {
         return trayCountRows;
+    }
+
+    public int getEffectiveTrayCountRows() {
+        return Math.max(trayCountRows, 1);
     }
 
     public void setTrayCountRows(int trayCountRows) {
