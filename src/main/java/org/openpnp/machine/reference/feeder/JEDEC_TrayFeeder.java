@@ -216,23 +216,24 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
             MainFrame.get().getCameraViews().getCameraView(camera)
                     .showFilteredImage(OpenCvUtils.toBufferedImage(pipeline.getWorkingImage()), 250);
 
-            return checkIfInInitialView(camera, partLocation);
+            return checkIfInInitialView(camera, startPoint, partLocation);
         }
     }
 
     /**
-     * Checks if the testLocation is inside the camera view starting on the feeder location.
+     * Checks if the testLocation is inside the camera view starting on the initialViewLocation.
      * Avoids to run outside the initial area if a bad pipeline repeated detects the parts
      * on one edge of the field of view, even after moving the camera to the location.
      * @param camera the used camera
+     * @param initialViewLocation the location where the camera view started
      * @param testLocation the location to test
      * @return the testLocation, or null if outside the initial field of view
      */
-    private Location checkIfInInitialView(Camera camera, Location testLocation) {
+    private Location checkIfInInitialView(Camera camera, Location initialViewLocation, Location testLocation) {
         // just make sure, the vision did not "run away" => outside of the initial camera range
         // should never happen, but with badly dialed in pipelines ...
-        double distanceX = Math.abs(this.location.convertToUnits(LengthUnit.Millimeters).getX() - testLocation.convertToUnits(LengthUnit.Millimeters).getX());
-        double distanceY = Math.abs(this.location.convertToUnits(LengthUnit.Millimeters).getY() - testLocation.convertToUnits(LengthUnit.Millimeters).getY());
+        double distanceX = Math.abs(initialViewLocation.convertToUnits(LengthUnit.Millimeters).getX() - testLocation.convertToUnits(LengthUnit.Millimeters).getX());
+        double distanceY = Math.abs(initialViewLocation.convertToUnits(LengthUnit.Millimeters).getY() - testLocation.convertToUnits(LengthUnit.Millimeters).getY());
 
         // if moved more than the half of the camera picture size => something went wrong => return no result
         if (distanceX > camera.getUnitsPerPixelAtZ().convertToUnits(LengthUnit.Millimeters).getX() * camera.getWidth() / 2
