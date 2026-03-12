@@ -120,23 +120,15 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
             throw new FeederEmptyException(this.getName() + " (" + this.partId + ") is empty.");
         }
 
-        while (pickLocation == null && feedCount < trayCapacity) {
-            //Inc feed count
-            setFeedCount(getFeedCount() + 1);
-
-            //Determine rough position of next part (pocket)
-            Location nextPocket = getNextPocketLocation();
-
-            //Pass pocket to function to get exact pick location
-            pickLocation = locateFeederPart(nozzle, nextPocket);
-            if (pickLocation == null) {
-                //TODO: Add more handling for failed prealign
-                Logger.warn("Pick {} at location [{}] not found!", getFeedCount(), nextPocket);
-                //If we failed, we are incramenting by one and going to the next location.
-            }
-        }
+        // Advance to exactly one next pocket per feed() call. If no part is found in that pocket,
+        // throw a feed fault so the Job Processor fault window / limit logic can act on it.
+        setFeedCount(getFeedCount() + 1);
+        Location nextPocket = getNextPocketLocation();
+        pickLocation = locateFeederPart(nozzle, nextPocket);
         if (pickLocation == null) {
-            throw new FeederEmptyException(this.getName() + " (" + this.partId + ") is empty.");
+            throw new Exception(
+                    String.format("Feeder %s: Pick %d at location [%s] not found.",
+                            getName(), getFeedCount(), nextPocket));
         }
     }
 
