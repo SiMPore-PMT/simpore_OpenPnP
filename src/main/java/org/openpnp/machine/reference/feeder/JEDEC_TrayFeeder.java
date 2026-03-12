@@ -403,7 +403,9 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
      */
     @Override
     public boolean isPartHeightAbovePickLocation() {
-        return true;
+        // JEDEC tray pick Z is expected to be the part top (like tray feeders),
+        // so do not add part height again in Nozzle.moveToPickLocation().
+        return false;
     }
 
     public CvPipeline getPipeline() {
