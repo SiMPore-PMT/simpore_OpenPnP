@@ -10,6 +10,8 @@ import org.openpnp.gui.support.Wizard;
 import org.openpnp.machine.reference.ReferenceFeeder;
 import org.openpnp.machine.reference.feeder.wizards.AdvancedLoosePartFeederConfigurationWizard;
 import org.openpnp.machine.reference.feeder.wizards.JEDEC_TrayFeederConfigurationWizard;
+import org.openpnp.model.Configuration;
+import org.openpnp.model.FiducialVisionSettings;
 import org.openpnp.model.LengthUnit;
 import org.openpnp.model.Location;
 import org.openpnp.spi.Camera;
@@ -47,6 +49,9 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
 
     @Element(required = false)
     private CvPipeline trainingPipeline = createDefaultTrainingPipeline();
+
+    @Attribute(required = false)
+    private String fiducialVisionSettingsId;
 
     private Location pickLocation;
     private Location lastLocation;
@@ -115,23 +120,20 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         lastLocation = pickLocation;
         pickLocation = null;
 
-        while(pickLocation == null || (feedCount <= (trayCountCols * trayCountRows))){
-            //Inc feed count
-            setFeedCount(getFeedCount() + 1);
-
-            //Determine rough position of next part (pocket)
-            Location nextPocket = getNextPocketLocation();
-
-            //Pass pocket to function to get exact pick location
-            pickLocation = locateFeederPart(nozzle, nextPocket);
-            if (pickLocation == null) {
-                //TODO: Add more handling for failed prealign
-                Logger.warn("Pick {} at location [{}] not found!", getFeedCount(), nextPocket);
-                //If we failed, we are incramenting by one and going to the next location.
-            }
+        int trayCapacity = getEffectiveTrayCountCols() * getEffectiveTrayCountRows();
+        if (feedCount >= trayCapacity) {
+            throw new FeederEmptyException(this.getName() + " (" + this.partId + ") is empty.");
         }
-        if (feedCount >= (trayCountCols * trayCountRows)) {
-            throw new Exception(this.getName() + " (" + this.partId + ") is empty.");
+
+        // Advance to exactly one next pocket per feed() call. If no part is found in that pocket,
+        // throw a feed fault so the Job Processor fault window / limit logic can act on it.
+        setFeedCount(getFeedCount() + 1);
+        Location nextPocket = getNextPocketLocation();
+        pickLocation = locateFeederPart(nozzle, nextPocket);
+        if (pickLocation == null) {
+            throw new Exception(
+                    String.format("Feeder %s: Pick %d at location [%s] not found.",
+                            getName(), getFeedCount(), nextPocket));
         }
     }
 
@@ -186,7 +188,7 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         Camera camera = nozzle.getHead().getDefaultCamera();
         MovableUtils.moveToLocationAtSafeZ(camera, startPoint);
         camera.waitForCompletion(MotionPlanner.CompletionType.WaitForStillstand);
-        try (CvPipeline pipeline = getPipeline()) {
+        try (CvPipeline pipeline = getPipelineForProcessing()) {
             // Process the pipeline to extract RotatedRect results
             pipeline.setProperty("camera", camera);
             pipeline.setProperty("nozzle", nozzle);
@@ -219,23 +221,24 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
             MainFrame.get().getCameraViews().getCameraView(camera)
                     .showFilteredImage(OpenCvUtils.toBufferedImage(pipeline.getWorkingImage()), 250);
 
-            return checkIfInInitialView(camera, partLocation);
+            return checkIfInInitialView(camera, startPoint, partLocation);
         }
     }
 
     /**
-     * Checks if the testLocation is inside the camera view starting on the feeder location.
+     * Checks if the testLocation is inside the camera view starting on the initialViewLocation.
      * Avoids to run outside the initial area if a bad pipeline repeated detects the parts
      * on one edge of the field of view, even after moving the camera to the location.
      * @param camera the used camera
+     * @param initialViewLocation the location where the camera view started
      * @param testLocation the location to test
      * @return the testLocation, or null if outside the initial field of view
      */
-    private Location checkIfInInitialView(Camera camera, Location testLocation) {
+    private Location checkIfInInitialView(Camera camera, Location initialViewLocation, Location testLocation) {
         // just make sure, the vision did not "run away" => outside of the initial camera range
         // should never happen, but with badly dialed in pipelines ...
-        double distanceX = Math.abs(this.location.convertToUnits(LengthUnit.Millimeters).getX() - testLocation.convertToUnits(LengthUnit.Millimeters).getX());
-        double distanceY = Math.abs(this.location.convertToUnits(LengthUnit.Millimeters).getY() - testLocation.convertToUnits(LengthUnit.Millimeters).getY());
+        double distanceX = Math.abs(initialViewLocation.convertToUnits(LengthUnit.Millimeters).getX() - testLocation.convertToUnits(LengthUnit.Millimeters).getX());
+        double distanceY = Math.abs(initialViewLocation.convertToUnits(LengthUnit.Millimeters).getY() - testLocation.convertToUnits(LengthUnit.Millimeters).getY());
 
         // if moved more than the half of the camera picture size => something went wrong => return no result
         if (distanceX > camera.getUnitsPerPixelAtZ().convertToUnits(LengthUnit.Millimeters).getX() * camera.getWidth() / 2
@@ -288,6 +291,10 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         return trayCountCols;
     }
 
+    public int getEffectiveTrayCountCols() {
+        return Math.max(trayCountCols, 1);
+    }
+
     public void setTrayCountCols(int trayCountCols) {
         int oldValue = this.trayCountCols;
         this.trayCountCols = trayCountCols;
@@ -298,6 +305,10 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
 
     public int getTrayCountRows() {
         return trayCountRows;
+    }
+
+    public int getEffectiveTrayCountRows() {
+        return Math.max(trayCountRows, 1);
     }
 
     public void setTrayCountRows(int trayCountRows) {
@@ -398,11 +409,41 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
      */
     @Override
     public boolean isPartHeightAbovePickLocation() {
-        return true;
+        // JEDEC tray pick Z is expected to be the part top (like tray feeders),
+        // so do not add part height again in Nozzle.moveToPickLocation().
+        return false;
     }
 
     public CvPipeline getPipeline() {
         return pipeline;
+    }
+
+    public FiducialVisionSettings getFiducialVisionSettings() {
+        if (fiducialVisionSettingsId == null || fiducialVisionSettingsId.isEmpty()) {
+            return null;
+        }
+        if (!(Configuration.get().getVisionSettings(fiducialVisionSettingsId) instanceof FiducialVisionSettings)) {
+            return null;
+        }
+        return (FiducialVisionSettings) Configuration.get().getVisionSettings(fiducialVisionSettingsId);
+    }
+
+    public void setFiducialVisionSettings(FiducialVisionSettings fiducialVisionSettings) {
+        Object oldValue = getFiducialVisionSettings();
+        fiducialVisionSettingsId = (fiducialVisionSettings != null) ? fiducialVisionSettings.getId() : null;
+        firePropertyChange("fiducialVisionSettings", oldValue, fiducialVisionSettings);
+    }
+
+    public String getFiducialVisionSettingsId() {
+        return fiducialVisionSettingsId;
+    }
+
+    private CvPipeline getPipelineForProcessing() throws CloneNotSupportedException {
+        FiducialVisionSettings fiducialVisionSettings = getFiducialVisionSettings();
+        if (fiducialVisionSettings != null && fiducialVisionSettings.getPipeline() != null) {
+            return fiducialVisionSettings.getPipeline().clone();
+        }
+        return getPipeline().clone();
     }
 
     public void resetPipeline() {
