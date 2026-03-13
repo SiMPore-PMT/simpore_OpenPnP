@@ -468,7 +468,24 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         addWrappedBinding(feeder, "part", comboBoxPart, "selectedItem");
         addWrappedBinding(feeder, "feedRetryCount", retryCountTf, "text", intConverter);
         addWrappedBinding(feeder, "pickRetryCount", pickRetryCount, "text", intConverter);
-        addWrappedBinding(feeder, "fiducialVisionSettings", fiducialVisionSettingsCombo, "selectedItem");
+        addWrappedBinding(feeder, "fiducialVisionSettingsId", fiducialVisionSettingsCombo, "selectedItem",
+                new Converter<String, AbstractVisionSettings>() {
+                    @Override
+                    public AbstractVisionSettings convertForward(String id) {
+                        if (id == null || id.isEmpty()) {
+                            return null;
+                        }
+                        if (Configuration.get().getVisionSettings(id) instanceof AbstractVisionSettings) {
+                            return (AbstractVisionSettings) Configuration.get().getVisionSettings(id);
+                        }
+                        return null;
+                    }
+
+                    @Override
+                    public String convertReverse(AbstractVisionSettings visionSettings) {
+                        return visionSettings == null ? null : visionSettings.getId();
+                    }
+                });
 
         // pick location, rotations, Z
         MutableLocationProxy location = new MutableLocationProxy();
@@ -628,7 +645,7 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         if (feeder.getPart() == null) {
             throw new Exception("Feeder " + feeder.getName() + " has no part.");
         }
-        FiducialVisionSettings fiducialVisionSettings = feeder.getFiducialVisionSettings();
+        FiducialVisionSettings fiducialVisionSettings = getSelectedFiducialVisionSettings();
         CvPipeline pipeline = (fiducialVisionSettings != null) ? fiducialVisionSettings.getPipeline() : feeder.getPipeline();
         if (pipeline == null) {
             throw new Exception("No pipeline is configured for this feeder.");
@@ -647,11 +664,20 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
     }
 
     private void resetPipeline() {
-        if (feeder.getFiducialVisionSettings() != null) {
-            feeder.getFiducialVisionSettings().resetToDefault();
+        FiducialVisionSettings fiducialVisionSettings = getSelectedFiducialVisionSettings();
+        if (fiducialVisionSettings != null) {
+            fiducialVisionSettings.resetToDefault();
             return;
         }
         feeder.resetPipeline();
+    }
+
+    private FiducialVisionSettings getSelectedFiducialVisionSettings() {
+        Object selected = (fiducialVisionSettingsCombo != null) ? fiducialVisionSettingsCombo.getSelectedItem() : null;
+        if (selected instanceof FiducialVisionSettings) {
+            return (FiducialVisionSettings) selected;
+        }
+        return feeder.getFiducialVisionSettings();
     }
 
     private void editTrainingPipeline() throws Exception {

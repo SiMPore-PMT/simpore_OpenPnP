@@ -438,6 +438,14 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         return fiducialVisionSettingsId;
     }
 
+    public void setFiducialVisionSettingsId(String fiducialVisionSettingsId) {
+        String oldId = this.fiducialVisionSettingsId;
+        Object oldValue = getFiducialVisionSettings();
+        this.fiducialVisionSettingsId = fiducialVisionSettingsId;
+        firePropertyChange("fiducialVisionSettingsId", oldId, fiducialVisionSettingsId);
+        firePropertyChange("fiducialVisionSettings", oldValue, getFiducialVisionSettings());
+    }
+
     private CvPipeline getPipelineForProcessing() throws CloneNotSupportedException {
         FiducialVisionSettings fiducialVisionSettings = getFiducialVisionSettings();
         if (fiducialVisionSettings != null && fiducialVisionSettings.getPipeline() != null) {
