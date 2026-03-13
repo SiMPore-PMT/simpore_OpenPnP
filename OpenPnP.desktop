@@ -1,0 +1,40 @@
+[Desktop Entry]
+# OpenPnP desktop launcher
+#
+# Setup steps:
+# 1. Save this file as: ~/Desktop/OpenPnP.desktop
+# 2. Make this launcher executable:
+#    chmod +x ~/Desktop/OpenPnP.desktop
+# 3. Make sure the launch script is executable:
+#    chmod +x /home/engineering-simpore/OpenPnP/openpnp.sh
+# 4. Mark the launcher as trusted if Ubuntu warns about it:
+#    gio set ~/Desktop/OpenPnP.desktop metadata::trusted true
+# 5. You should then be able to double-click it to launch OpenPnP.
+#
+# Optional:
+# - To show in the app menu, copy this file to:
+#   ~/.local/share/applications/OpenPnP.desktop
+# - If you have an icon file later, replace the Icon line with:
+#   Icon=/home/engineering-simpore/OpenPnP/your_icon.png
+
+#RUN
+#chmod +x /home/engineering-simpore/OpenPnP/OpenPnP.desktop
+#chmod +x /home/engineering-simpore/OpenPnP/openpnp.sh
+#gio set /home/engineering-simpore/OpenPnP/OpenPnP.desktop metadata::trusted true
+
+#Then Run
+#mkdir -p ~/Desktop
+#cp /home/engineering-simpore/OpenPnP/#OpenPnP.desktop ~/Desktop/OpenPnP.desktop
+#chmod +x ~/Desktop/OpenPnP.desktop
+#gio set ~/Desktop/OpenPnP.desktop metadata::trusted true
+
+
+Version=1.0
+Type=Application
+Name=OpenPnP
+Comment=Launch OpenPnP
+Exec=bash -c "cd /home/engineering-simpore/OpenPnP && ./openpnp.sh"
+Path=/home/engineering-simpore/OpenPnP
+Icon=utilities-terminal
+Terminal=false
+Categories=Development;
