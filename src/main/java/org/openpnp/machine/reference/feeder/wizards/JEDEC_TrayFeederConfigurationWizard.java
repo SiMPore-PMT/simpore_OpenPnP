@@ -52,8 +52,12 @@ import org.openpnp.gui.support.IntegerConverter;
 import org.openpnp.gui.support.LengthConverter;
 import org.openpnp.gui.support.MessageBoxes;
 import org.openpnp.gui.support.MutableLocationProxy;
+import org.openpnp.gui.support.NamedListCellRenderer;
 import org.openpnp.gui.support.PartsComboBoxModel;
+import org.openpnp.gui.support.VisionSettingsComboBoxModel;
 import org.openpnp.model.Configuration;
+import org.openpnp.model.AbstractVisionSettings;
+import org.openpnp.model.FiducialVisionSettings;
 import org.openpnp.model.Length;
 import org.openpnp.model.LengthUnit;
 import org.openpnp.model.Location;
@@ -111,6 +115,7 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
     private LocationButtonsPanel lastLocationButtonsPanel;
     private JTextField retryCountTf;
     private JTextField pickRetryCount;
+    private JComboBox<AbstractVisionSettings> fiducialVisionSettingsCombo;
 
     private MutableLocationProxy firstRowFirstColumn = new MutableLocationProxy();
     private MutableLocationProxy firstRowLastColumn = new MutableLocationProxy();
@@ -392,37 +397,45 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
                 FormSpecs.RELATED_GAP_COLSPEC, FormSpecs.DEFAULT_COLSPEC, FormSpecs.RELATED_GAP_COLSPEC,
                 FormSpecs.DEFAULT_COLSPEC, FormSpecs.RELATED_GAP_COLSPEC, FormSpecs.DEFAULT_COLSPEC, },
                 new RowSpec[] { FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC,
-                        FormSpecs.DEFAULT_ROWSPEC, }));
+                        FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, }));
 
-        JLabel lblFeedPipeline = new JLabel("Feed Pipeline");
-        visionPanel.add(lblFeedPipeline, "2, 2");
+        JLabel lblFiducialVisionSettings = new JLabel("Top Vision Alignment Model");
+        visionPanel.add(lblFiducialVisionSettings, "2, 2");
+
+        fiducialVisionSettingsCombo = new JComboBox<>(new VisionSettingsComboBoxModel<>(FiducialVisionSettings.class));
+        fiducialVisionSettingsCombo.setMaximumRowCount(20);
+        fiducialVisionSettingsCombo.setRenderer(new NamedListCellRenderer<>());
+        visionPanel.add(fiducialVisionSettingsCombo, "4, 2, 3, 1");
+
+        JLabel lblFeedPipeline = new JLabel("Active Pick Pipeline");
+        visionPanel.add(lblFeedPipeline, "2, 4");
 
         JButton btnEditPipeline = new JButton("Edit");
         btnEditPipeline.addActionListener(e -> UiUtils.messageBoxOnException(() -> {
             editPipeline();
         }));
-        visionPanel.add(btnEditPipeline, "4, 2");
+        visionPanel.add(btnEditPipeline, "4, 4");
 
         JButton btnResetPipeline = new JButton("Reset");
         btnResetPipeline.addActionListener(e -> UiUtils.messageBoxOnException(() -> {
             resetPipeline();
         }));
-        visionPanel.add(btnResetPipeline, "6, 2");
+        visionPanel.add(btnResetPipeline, "6, 4");
 
         JLabel lblTrainingPipeline = new JLabel("Training Pipeline");
-        visionPanel.add(lblTrainingPipeline, "2, 4");
+        visionPanel.add(lblTrainingPipeline, "2, 6");
 
         JButton btnEditTrainingPipeline = new JButton("Edit");
         btnEditTrainingPipeline.addActionListener(e -> UiUtils.messageBoxOnException(() -> {
             editTrainingPipeline();
         }));
-        visionPanel.add(btnEditTrainingPipeline, "4, 4");
+        visionPanel.add(btnEditTrainingPipeline, "4, 6");
 
         JButton btnResetTrainingPipeline = new JButton("Reset");
         btnResetTrainingPipeline.addActionListener(e -> UiUtils.messageBoxOnException(() -> {
             resetTrainingPipeline();
         }));
-        visionPanel.add(btnResetTrainingPipeline, "6, 4");
+        visionPanel.add(btnResetTrainingPipeline, "6, 6");
     }
 
     // ---------- Bindings ----------
@@ -455,6 +468,24 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         addWrappedBinding(feeder, "part", comboBoxPart, "selectedItem");
         addWrappedBinding(feeder, "feedRetryCount", retryCountTf, "text", intConverter);
         addWrappedBinding(feeder, "pickRetryCount", pickRetryCount, "text", intConverter);
+        addWrappedBinding(feeder, "fiducialVisionSettingsId", fiducialVisionSettingsCombo, "selectedItem",
+                new Converter<String, AbstractVisionSettings>() {
+                    @Override
+                    public AbstractVisionSettings convertForward(String id) {
+                        if (id == null || id.isEmpty()) {
+                            return null;
+                        }
+                        if (Configuration.get().getVisionSettings(id) instanceof AbstractVisionSettings) {
+                            return (AbstractVisionSettings) Configuration.get().getVisionSettings(id);
+                        }
+                        return null;
+                    }
+
+                    @Override
+                    public String convertReverse(AbstractVisionSettings visionSettings) {
+                        return visionSettings == null ? null : visionSettings.getId();
+                    }
+                });
 
         // pick location, rotations, Z
         MutableLocationProxy location = new MutableLocationProxy();
@@ -614,16 +645,39 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         if (feeder.getPart() == null) {
             throw new Exception("Feeder " + feeder.getName() + " has no part.");
         }
-        CvPipeline pipeline = feeder.getPipeline();
+        FiducialVisionSettings fiducialVisionSettings = getSelectedFiducialVisionSettings();
+        CvPipeline pipeline = (fiducialVisionSettings != null) ? fiducialVisionSettings.getPipeline() : feeder.getPipeline();
+        if (pipeline == null) {
+            throw new Exception("No pipeline is configured for this feeder.");
+        }
         pipeline.setProperty("camera", Configuration.get().getMachine().getDefaultHead().getDefaultCamera());
         pipeline.setProperty("feeder", feeder);
         CvPipelineEditor editor = new CvPipelineEditor(pipeline);
-        JDialog dialog = new CvPipelineEditorDialog(MainFrame.get(), feeder.getPart().getId() + " Pipeline", editor);
+        String pipelineName = (fiducialVisionSettings != null)
+                ? ((fiducialVisionSettings.getName() == null || fiducialVisionSettings.getName().isEmpty())
+                        ? fiducialVisionSettings.getId()
+                        : fiducialVisionSettings.getName())
+                : feeder.getPart().getId();
+        String pipelineType = (fiducialVisionSettings != null) ? " Top Vision Pipeline" : " Pipeline";
+        JDialog dialog = new CvPipelineEditorDialog(MainFrame.get(), pipelineName + pipelineType, editor);
         dialog.setVisible(true);
     }
 
     private void resetPipeline() {
+        FiducialVisionSettings fiducialVisionSettings = getSelectedFiducialVisionSettings();
+        if (fiducialVisionSettings != null) {
+            fiducialVisionSettings.resetToDefault();
+            return;
+        }
         feeder.resetPipeline();
+    }
+
+    private FiducialVisionSettings getSelectedFiducialVisionSettings() {
+        Object selected = (fiducialVisionSettingsCombo != null) ? fiducialVisionSettingsCombo.getSelectedItem() : null;
+        if (selected instanceof FiducialVisionSettings) {
+            return (FiducialVisionSettings) selected;
+        }
+        return feeder.getFiducialVisionSettings();
     }
 
     private void editTrainingPipeline() throws Exception {

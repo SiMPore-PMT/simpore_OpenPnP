@@ -10,6 +10,8 @@ import org.openpnp.gui.support.Wizard;
 import org.openpnp.machine.reference.ReferenceFeeder;
 import org.openpnp.machine.reference.feeder.wizards.AdvancedLoosePartFeederConfigurationWizard;
 import org.openpnp.machine.reference.feeder.wizards.JEDEC_TrayFeederConfigurationWizard;
+import org.openpnp.model.Configuration;
+import org.openpnp.model.FiducialVisionSettings;
 import org.openpnp.model.LengthUnit;
 import org.openpnp.model.Location;
 import org.openpnp.spi.Camera;
@@ -47,6 +49,9 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
 
     @Element(required = false)
     private CvPipeline trainingPipeline = createDefaultTrainingPipeline();
+
+    @Attribute(required = false)
+    private String fiducialVisionSettingsId;
 
     private Location pickLocation;
     private Location lastLocation;
@@ -183,7 +188,7 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         Camera camera = nozzle.getHead().getDefaultCamera();
         MovableUtils.moveToLocationAtSafeZ(camera, startPoint);
         camera.waitForCompletion(MotionPlanner.CompletionType.WaitForStillstand);
-        try (CvPipeline pipeline = getPipeline()) {
+        try (CvPipeline pipeline = getPipelineForProcessing()) {
             // Process the pipeline to extract RotatedRect results
             pipeline.setProperty("camera", camera);
             pipeline.setProperty("nozzle", nozzle);
@@ -411,6 +416,42 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
 
     public CvPipeline getPipeline() {
         return pipeline;
+    }
+
+    public FiducialVisionSettings getFiducialVisionSettings() {
+        if (fiducialVisionSettingsId == null || fiducialVisionSettingsId.isEmpty()) {
+            return null;
+        }
+        if (!(Configuration.get().getVisionSettings(fiducialVisionSettingsId) instanceof FiducialVisionSettings)) {
+            return null;
+        }
+        return (FiducialVisionSettings) Configuration.get().getVisionSettings(fiducialVisionSettingsId);
+    }
+
+    public void setFiducialVisionSettings(FiducialVisionSettings fiducialVisionSettings) {
+        Object oldValue = getFiducialVisionSettings();
+        fiducialVisionSettingsId = (fiducialVisionSettings != null) ? fiducialVisionSettings.getId() : null;
+        firePropertyChange("fiducialVisionSettings", oldValue, fiducialVisionSettings);
+    }
+
+    public String getFiducialVisionSettingsId() {
+        return fiducialVisionSettingsId;
+    }
+
+    public void setFiducialVisionSettingsId(String fiducialVisionSettingsId) {
+        String oldId = this.fiducialVisionSettingsId;
+        Object oldValue = getFiducialVisionSettings();
+        this.fiducialVisionSettingsId = fiducialVisionSettingsId;
+        firePropertyChange("fiducialVisionSettingsId", oldId, fiducialVisionSettingsId);
+        firePropertyChange("fiducialVisionSettings", oldValue, getFiducialVisionSettings());
+    }
+
+    private CvPipeline getPipelineForProcessing() throws CloneNotSupportedException {
+        FiducialVisionSettings fiducialVisionSettings = getFiducialVisionSettings();
+        if (fiducialVisionSettings != null && fiducialVisionSettings.getPipeline() != null) {
+            return fiducialVisionSettings.getPipeline().clone();
+        }
+        return getPipeline().clone();
     }
 
     public void resetPipeline() {
