@@ -407,7 +407,7 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         fiducialVisionSettingsCombo.setRenderer(new NamedListCellRenderer<>());
         visionPanel.add(fiducialVisionSettingsCombo, "4, 2, 3, 1");
 
-        JLabel lblFeedPipeline = new JLabel("Feed Pipeline");
+        JLabel lblFeedPipeline = new JLabel("Active Pick Pipeline");
         visionPanel.add(lblFeedPipeline, "2, 4");
 
         JButton btnEditPipeline = new JButton("Edit");
@@ -628,15 +628,29 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         if (feeder.getPart() == null) {
             throw new Exception("Feeder " + feeder.getName() + " has no part.");
         }
-        CvPipeline pipeline = feeder.getPipeline();
+        FiducialVisionSettings fiducialVisionSettings = feeder.getFiducialVisionSettings();
+        CvPipeline pipeline = (fiducialVisionSettings != null) ? fiducialVisionSettings.getPipeline() : feeder.getPipeline();
+        if (pipeline == null) {
+            throw new Exception("No pipeline is configured for this feeder.");
+        }
         pipeline.setProperty("camera", Configuration.get().getMachine().getDefaultHead().getDefaultCamera());
         pipeline.setProperty("feeder", feeder);
         CvPipelineEditor editor = new CvPipelineEditor(pipeline);
-        JDialog dialog = new CvPipelineEditorDialog(MainFrame.get(), feeder.getPart().getId() + " Pipeline", editor);
+        String pipelineName = (fiducialVisionSettings != null)
+                ? ((fiducialVisionSettings.getName() == null || fiducialVisionSettings.getName().isEmpty())
+                        ? fiducialVisionSettings.getId()
+                        : fiducialVisionSettings.getName())
+                : feeder.getPart().getId();
+        String pipelineType = (fiducialVisionSettings != null) ? " Top Vision Pipeline" : " Pipeline";
+        JDialog dialog = new CvPipelineEditorDialog(MainFrame.get(), pipelineName + pipelineType, editor);
         dialog.setVisible(true);
     }
 
     private void resetPipeline() {
+        if (feeder.getFiducialVisionSettings() != null) {
+            feeder.getFiducialVisionSettings().resetToDefault();
+            return;
+        }
         feeder.resetPipeline();
     }
 
