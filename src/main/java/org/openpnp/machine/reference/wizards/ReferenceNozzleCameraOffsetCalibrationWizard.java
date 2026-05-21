@@ -8,11 +8,13 @@ import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
+import javax.swing.JButton;
 import javax.swing.border.TitledBorder;
 
 import org.openpnp.gui.support.AbstractConfigurationWizard;
 import org.openpnp.machine.reference.ReferenceNozzle;
 import org.openpnp.machine.reference.ReferenceNozzleCameraOffsetCalibration;
+import org.openpnp.util.UiUtils;
 
 import com.jgoodies.forms.layout.ColumnSpec;
 import com.jgoodies.forms.layout.FormLayout;
@@ -20,6 +22,7 @@ import com.jgoodies.forms.layout.FormSpecs;
 import com.jgoodies.forms.layout.RowSpec;
 
 public class ReferenceNozzleCameraOffsetCalibrationWizard extends AbstractConfigurationWizard {
+    private final ReferenceNozzle nozzle;
     private final ReferenceNozzleCameraOffsetCalibration calibration;
     private JCheckBox enabled;
     private JComboBox<ReferenceNozzleCameraOffsetCalibration.RecalibrationTrigger> recalibrationTrigger;
@@ -28,6 +31,7 @@ public class ReferenceNozzleCameraOffsetCalibrationWizard extends AbstractConfig
     private JTextField lastResultSummary;
 
     public ReferenceNozzleCameraOffsetCalibrationWizard(ReferenceNozzle nozzle) {
+        this.nozzle = nozzle;
         this.calibration = nozzle.getCameraOffsetCalibration();
 
         JPanel panel = new JPanel();
@@ -41,6 +45,8 @@ public class ReferenceNozzleCameraOffsetCalibrationWizard extends AbstractConfig
                 FormSpecs.RELATED_GAP_COLSPEC,
                 ColumnSpec.decode("default:grow")
         }, new RowSpec[] {
+                FormSpecs.RELATED_GAP_ROWSPEC,
+                FormSpecs.DEFAULT_ROWSPEC,
                 FormSpecs.RELATED_GAP_ROWSPEC,
                 FormSpecs.DEFAULT_ROWSPEC,
                 FormSpecs.RELATED_GAP_ROWSPEC,
@@ -86,8 +92,16 @@ public class ReferenceNozzleCameraOffsetCalibrationWizard extends AbstractConfig
         lastResultSummary.setEditable(false);
         panel.add(lastResultSummary, "4, 10, fill, default");
 
+
+        JButton runCalibrationButton = new JButton("Run precision camera-offset calibration now");
+        runCalibrationButton.addActionListener((e) -> UiUtils.submitUiMachineTask(() -> {
+            nozzle.calibrateCameraOffset(true);
+            return null;
+        }));
+        panel.add(runCalibrationButton, "2, 12, 3, 1");
+
         JLabel help = new JLabel("Manual mark-and-measure offset setup remains in the separate \"Nozzle Offset Wizard\" tab.");
-        panel.add(help, "2, 12, 3, 1");
+        panel.add(help, "2, 14, 3, 1");
     }
 
     protected void adaptDialog() {

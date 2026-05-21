@@ -580,6 +580,10 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
         return safeZ;
     }
 
+    public CameraOffsetCalibrationResult calibrateCameraOffset(boolean apply) throws Exception {
+        return getCameraOffsetCalibration().calibrate(this, apply);
+    }
+
     @Override
     public void home() throws Exception {
         Logger.debug("{}.home()", getName());
@@ -610,6 +614,23 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
                         calibrationNozzleTip.getCalibration().reset(this);
                     }
                 }
+            }
+                }
+
+        ReferenceNozzleCameraOffsetCalibration cameraOffsetCalibration = getCameraOffsetCalibration();
+        if (cameraOffsetCalibration.isEnabled()
+                && cameraOffsetCalibration.getRecalibrationTrigger() == ReferenceNozzleCameraOffsetCalibration.RecalibrationTrigger.MachineHome) {
+            try {
+                calibrateCameraOffset(true);
+            }
+            catch (Exception e) {
+                if (cameraOffsetCalibration.isFailHoming()) {
+                    throw e;
+                }
+                Logger.warn(e, "{}.home() camera offset calibration failed but failHoming is disabled", getName());
+                UiUtils.messageBoxOnExceptionLater(() -> {
+                    throw e;
+                });
             }
         }
     }
