@@ -7,6 +7,7 @@ import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JTextField;
 import javax.swing.border.TitledBorder;
 
 import org.openpnp.gui.support.AbstractConfigurationWizard;
@@ -24,6 +25,7 @@ public class ReferenceNozzleCameraOffsetCalibrationWizard extends AbstractConfig
     private JComboBox<ReferenceNozzleCameraOffsetCalibration.RecalibrationTrigger> recalibrationTrigger;
     private JCheckBox failHoming;
     private JLabel failHomingLabel;
+    private JTextField lastResultSummary;
 
     public ReferenceNozzleCameraOffsetCalibrationWizard(ReferenceNozzle nozzle) {
         this.calibration = nozzle.getCameraOffsetCalibration();
@@ -39,6 +41,8 @@ public class ReferenceNozzleCameraOffsetCalibrationWizard extends AbstractConfig
                 FormSpecs.RELATED_GAP_COLSPEC,
                 ColumnSpec.decode("default:grow")
         }, new RowSpec[] {
+                FormSpecs.RELATED_GAP_ROWSPEC,
+                FormSpecs.DEFAULT_ROWSPEC,
                 FormSpecs.RELATED_GAP_ROWSPEC,
                 FormSpecs.DEFAULT_ROWSPEC,
                 FormSpecs.RELATED_GAP_ROWSPEC,
@@ -75,8 +79,15 @@ public class ReferenceNozzleCameraOffsetCalibrationWizard extends AbstractConfig
         failHoming = new JCheckBox("");
         panel.add(failHoming, "4, 8");
 
+        JLabel lastResultLabel = new JLabel("Last calibration result");
+        panel.add(lastResultLabel, "2, 10");
+
+        lastResultSummary = new JTextField();
+        lastResultSummary.setEditable(false);
+        panel.add(lastResultSummary, "4, 10, fill, default");
+
         JLabel help = new JLabel("Manual mark-and-measure offset setup remains in the separate \"Nozzle Offset Wizard\" tab.");
-        panel.add(help, "2, 10, 3, 1");
+        panel.add(help, "2, 12, 3, 1");
     }
 
     protected void adaptDialog() {
@@ -90,6 +101,7 @@ public class ReferenceNozzleCameraOffsetCalibrationWizard extends AbstractConfig
         addWrappedBinding(calibration, "enabled", enabled, "selected");
         addWrappedBinding(calibration, "recalibrationTrigger", recalibrationTrigger, "selectedItem");
         addWrappedBinding(calibration, "failHoming", failHoming, "selected");
+        addWrappedBinding(calibration, "lastResultSummary", lastResultSummary, "text");
         adaptDialog();
     }
 }

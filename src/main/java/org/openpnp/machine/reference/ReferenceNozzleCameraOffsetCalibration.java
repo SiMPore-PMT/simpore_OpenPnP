@@ -34,6 +34,9 @@ public class ReferenceNozzleCameraOffsetCalibration extends AbstractModelObject 
     @Element(required = false)
     private CvPipeline pipeline;
 
+    @Attribute(required = false)
+    private String lastResultSummary = "Not calibrated yet.";
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -105,6 +108,16 @@ public class ReferenceNozzleCameraOffsetCalibration extends AbstractModelObject 
         Object oldValue = this.pipeline;
         this.pipeline = pipeline;
         firePropertyChange("pipeline", oldValue, pipeline);
+    }
+
+    public String getLastResultSummary() {
+        return lastResultSummary;
+    }
+
+    public void setLastResultSummary(String lastResultSummary) {
+        Object oldValue = this.lastResultSummary;
+        this.lastResultSummary = lastResultSummary;
+        firePropertyChange("lastResultSummary", oldValue, lastResultSummary);
     }
 
 }
