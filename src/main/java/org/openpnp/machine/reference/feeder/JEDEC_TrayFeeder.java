@@ -12,10 +12,10 @@ import org.openpnp.machine.reference.feeder.wizards.AdvancedLoosePartFeederConfi
 import org.openpnp.machine.reference.feeder.wizards.JEDEC_TrayFeederConfigurationWizard;
 import org.openpnp.model.Configuration;
 import org.openpnp.model.FiducialVisionSettings;
+import org.openpnp.model.Length;
 import org.openpnp.model.LengthUnit;
 import org.openpnp.model.Location;
 import org.openpnp.spi.Camera;
-import org.openpnp.spi.MotionPlanner;
 import org.openpnp.spi.MotionPlanner.CompletionType;
 import org.openpnp.spi.Nozzle;
 import org.openpnp.spi.PropertySheetHolder;
@@ -24,6 +24,8 @@ import org.openpnp.util.OpenCvUtils;
 import org.openpnp.util.VisionUtils;
 import org.openpnp.vision.pipeline.CvPipeline;
 import org.simpleframework.xml.Element;
+import org.simpleframework.xml.Root;
+import org.simpleframework.xml.Transient;
 import org.pmw.tinylog.Logger;
 import org.simpleframework.xml.Attribute;
 import org.simpleframework.xml.core.Commit;
@@ -39,7 +41,10 @@ import java.util.List;
  * Combines ReferenceRotatedTrayFeeder structure and imaging pipeline of AdvancedLoosePartFeeder.
  * Allows for part to be posed, and tip to be adjusted before initial pick from tray
  */
+@Root(strict = false)
 public class JEDEC_TrayFeeder extends ReferenceFeeder {
+    public static final double DEFAULT_RECENTER_TOLERANCE_MM = 0.02;
+    public static final int DEFAULT_RECENTER_MAX_PASSES = 3;
 
     /**
      * New -> From advancedLoosePartFeeder
@@ -47,11 +52,20 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     @Element(required = false)
     private CvPipeline pipeline = createDefaultPipeline();
 
-    @Element(required = false)
-    private CvPipeline trainingPipeline = createDefaultTrainingPipeline();
+    @Transient
+    private String fiducialVisionSettingsId;
 
     @Attribute(required = false)
-    private String fiducialVisionSettingsId;
+    private boolean useAdvancedCameraCalibration = false;
+
+    @Attribute(required = false)
+    private boolean useAsyncGcodeMotion = false;
+
+    @Attribute(required = false)
+    private double recenterToleranceMm = DEFAULT_RECENTER_TOLERANCE_MM;
+
+    @Attribute(required = false)
+    private int recenterMaxPasses = DEFAULT_RECENTER_MAX_PASSES;
 
     private Location pickLocation;
     private Location lastLocation;
@@ -187,42 +201,125 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     private Location locateFeederPart(Nozzle nozzle, Location startPoint) throws Exception {
         Camera camera = nozzle.getHead().getDefaultCamera();
         MovableUtils.moveToLocationAtSafeZ(camera, startPoint);
-        camera.waitForCompletion(MotionPlanner.CompletionType.WaitForStillstand);
-        try (CvPipeline pipeline = getPipelineForProcessing()) {
-            // Process the pipeline to extract RotatedRect results
-            pipeline.setProperty("camera", camera);
-            pipeline.setProperty("nozzle", nozzle);
-            pipeline.setProperty("feeder", this);
-            pipeline.process();
-            // Grab the results
-            List<RotatedRect> results = (List<RotatedRect>) pipeline.getResult(VisionUtils.PIPELINE_RESULTS_NAME).model;
-            if ((results == null) || results.isEmpty()) {
-                //nothing found
-                return null;
-            }
-            // Find the closest result
-            results.sort((a, b) -> {
-                Double da = VisionUtils.getPixelLocation(camera, a.center.x, a.center.y)
-                        .getLinearDistanceTo(camera.getLocation());
-                Double db = VisionUtils.getPixelLocation(camera, b.center.x, b.center.y)
-                        .getLinearDistanceTo(camera.getLocation());
-                return da.compareTo(db);
-            });
-            RotatedRect result = results.get(0);
-            Location partLocation = VisionUtils.getPixelLocation(camera, result.center.x, result.center.y);
-            // Get the result's Location
-            // Update the location with the result's rotation
-            partLocation = partLocation.derive(null, null, null, -(result.angle + getLocation().getRotation()));
-            // Update the location with the correct Z, which is the configured Location's Z.
-            partLocation =
-                    partLocation.derive(null, null,
-                            this.location.convertToUnits(partLocation.getUnits()).getZ(),
-                            null);
-            MainFrame.get().getCameraViews().getCameraView(camera)
-                    .showFilteredImage(OpenCvUtils.toBufferedImage(pipeline.getWorkingImage()), 250);
+        camera.waitForCompletion(CompletionType.WaitForStillstand);
 
-            return checkIfInInitialView(camera, startPoint, partLocation);
+        int maxPasses = getEffectiveRecenterMaxPasses();
+        double toleranceMm = getEffectiveRecenterToleranceMm();
+        for (int pass = 0; pass < maxPasses; pass++) {
+            if (isUseAsyncGcodeMotion()) {
+                camera.waitForCompletion(CompletionType.WaitForStillstand);
+            }
+            try (CvPipeline pipeline = getPipelineForProcessing()) {
+                // Process the pipeline to extract RotatedRect results
+                pipeline.setProperty("camera", camera);
+                pipeline.setProperty("nozzle", nozzle);
+                pipeline.setProperty("feeder", this);
+                pipeline.process();
+                // Grab the results
+                @SuppressWarnings("unchecked")
+                List<RotatedRect> results = (List<RotatedRect>) pipeline.getResult(VisionUtils.PIPELINE_RESULTS_NAME).model;
+                if ((results == null) || results.isEmpty()) {
+                    //nothing found
+                    return null;
+                }
+                // Find the closest result
+                results.sort((a, b) -> {
+                    Double da = getPixelLocation(camera, a.center.x, a.center.y)
+                            .getLinearDistanceTo(camera.getLocation());
+                    Double db = getPixelLocation(camera, b.center.x, b.center.y)
+                            .getLinearDistanceTo(camera.getLocation());
+                    return da.compareTo(db);
+                });
+                RotatedRect result = results.get(0);
+                Location partLocation = getPixelLocation(camera, result.center.x, result.center.y);
+                // Get the result's Location
+                // Update the location with the result's rotation
+                partLocation = partLocation.derive(null, null, null, -(result.angle + getLocation().getRotation()));
+                // Update the location with the correct Z, which is the configured Location's Z.
+                partLocation =
+                        partLocation.derive(null, null,
+                                this.location.convertToUnits(partLocation.getUnits()).getZ(),
+                                null);
+                MainFrame.get().getCameraViews().getCameraView(camera)
+                        .showFilteredImage(OpenCvUtils.toBufferedImage(pipeline.getWorkingImage()), 250);
+
+                Location guardedPartLocation = checkIfInInitialView(camera, startPoint, partLocation);
+                if (guardedPartLocation == null) {
+                    return null;
+                }
+
+                Location cameraLocationMm = camera.getLocation().convertToUnits(LengthUnit.Millimeters);
+                Location partLocationMm = guardedPartLocation.convertToUnits(LengthUnit.Millimeters);
+                double dx = partLocationMm.getX() - cameraLocationMm.getX();
+                double dy = partLocationMm.getY() - cameraLocationMm.getY();
+
+                if (Math.abs(dx) <= toleranceMm && Math.abs(dy) <= toleranceMm) {
+                    return guardedPartLocation;
+                }
+
+                if (pass + 1 < maxPasses) {
+                    moveCameraToDieCenter(camera, guardedPartLocation);
+                    camera.waitForCompletion(CompletionType.WaitForStillstand);
+                }
+                else {
+                    return guardedPartLocation;
+                }
+            }
         }
+        return null;
+    }
+
+    private double getEffectiveRecenterToleranceMm() {
+        if (Double.isNaN(recenterToleranceMm)) {
+            return DEFAULT_RECENTER_TOLERANCE_MM;
+        }
+        return Math.max(0, recenterToleranceMm);
+    }
+
+    private int getEffectiveRecenterMaxPasses() {
+        return Math.max(recenterMaxPasses, 1);
+    }
+
+    private Location getPixelLocation(Camera camera, double x, double y) {
+        if (!isUseAdvancedCameraCalibration()) {
+            return VisionUtils.getPixelLocation(camera, x, y);
+        }
+
+        Location unitsPerPixel = getUnitsPerPixelForVision(camera);
+        LengthUnit units = unitsPerPixel.getUnits();
+        double offsetX = x - camera.getWidth() / 2.0;
+        double offsetY = y - camera.getHeight() / 2.0;
+        double machineOffsetX = offsetX * unitsPerPixel.getX();
+        double machineOffsetY = -offsetY * unitsPerPixel.getY();
+        return camera.getLocation().add(new Location(units, machineOffsetX, machineOffsetY, 0, 0));
+    }
+
+    private Location getUnitsPerPixelForVision(Camera camera) {
+        if (!isUseAdvancedCameraCalibration()) {
+            return camera.getUnitsPerPixelAtZ();
+        }
+        return camera.getUnitsPerPixel(getVisionViewingPlaneZ());
+    }
+
+    private Length getVisionViewingPlaneZ() {
+        Length feederZ = this.location.getLengthZ();
+        Length partHeight = getPart() == null ? null : getPart().getHeight();
+        if (partHeight == null || partHeight.getUnits() == null) {
+            return feederZ;
+        }
+        return feederZ.add(partHeight);
+    }
+
+    private void moveCameraToDieCenter(Camera camera, Location detectedLocation) throws Exception {
+        Location cameraLocation = camera.getLocation();
+        Location detectedCameraUnits = detectedLocation.convertToUnits(cameraLocation.getUnits());
+        double rotation = cameraLocation.getRotation();
+        if (Double.isNaN(rotation)) {
+            rotation = 0;
+        }
+        Location targetLocation = new Location(cameraLocation.getUnits(),
+                detectedCameraUnits.getX(), detectedCameraUnits.getY(), cameraLocation.getZ(), rotation);
+        MovableUtils.moveToLocationAtSafeZ(camera, targetLocation);
     }
 
     /**
@@ -241,8 +338,9 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         double distanceY = Math.abs(initialViewLocation.convertToUnits(LengthUnit.Millimeters).getY() - testLocation.convertToUnits(LengthUnit.Millimeters).getY());
 
         // if moved more than the half of the camera picture size => something went wrong => return no result
-        if (distanceX > camera.getUnitsPerPixelAtZ().convertToUnits(LengthUnit.Millimeters).getX() * camera.getWidth() / 2
-                || distanceY > camera.getUnitsPerPixelAtZ().convertToUnits(LengthUnit.Millimeters).getY() * camera.getHeight() / 2) {
+        Location unitsPerPixel = getUnitsPerPixelForVision(camera).convertToUnits(LengthUnit.Millimeters);
+        if (distanceX > unitsPerPixel.getX() * camera.getWidth() / 2
+                || distanceY > unitsPerPixel.getY() * camera.getHeight() / 2) {
             System.err.println("Vision outside of the initial area");
             return null;
         }
@@ -368,6 +466,48 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         return trayCountRows*trayCountCols - feedCount;
     }
 
+
+    public boolean isUseAdvancedCameraCalibration() {
+        return useAdvancedCameraCalibration;
+    }
+
+    public void setUseAdvancedCameraCalibration(boolean useAdvancedCameraCalibration) {
+        boolean oldValue = this.useAdvancedCameraCalibration;
+        this.useAdvancedCameraCalibration = useAdvancedCameraCalibration;
+        firePropertyChange("useAdvancedCameraCalibration", oldValue, useAdvancedCameraCalibration);
+    }
+
+    public boolean isUseAsyncGcodeMotion() {
+        return useAsyncGcodeMotion;
+    }
+
+    public void setUseAsyncGcodeMotion(boolean useAsyncGcodeMotion) {
+        boolean oldValue = this.useAsyncGcodeMotion;
+        this.useAsyncGcodeMotion = useAsyncGcodeMotion;
+        firePropertyChange("useAsyncGcodeMotion", oldValue, useAsyncGcodeMotion);
+    }
+
+    public double getRecenterToleranceMm() {
+        return getEffectiveRecenterToleranceMm();
+    }
+
+    public void setRecenterToleranceMm(double recenterToleranceMm) {
+        double oldValue = this.recenterToleranceMm;
+        this.recenterToleranceMm = Double.isNaN(recenterToleranceMm)
+                ? DEFAULT_RECENTER_TOLERANCE_MM : Math.max(0, recenterToleranceMm);
+        firePropertyChange("recenterToleranceMm", oldValue, this.recenterToleranceMm);
+    }
+
+    public int getRecenterMaxPasses() {
+        return getEffectiveRecenterMaxPasses();
+    }
+
+    public void setRecenterMaxPasses(int recenterMaxPasses) {
+        int oldValue = this.recenterMaxPasses;
+        this.recenterMaxPasses = Math.max(recenterMaxPasses, 1);
+        firePropertyChange("recenterMaxPasses", oldValue, this.recenterMaxPasses);
+    }
+
     public double getComponentRotationInTray() {
         return componentRotationInTray;
     }
@@ -458,13 +598,6 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         pipeline = createDefaultPipeline();
     }
 
-    public CvPipeline getTrainingPipeline() {
-        return trainingPipeline;
-    }
-
-    public void resetTrainingPipeline() {
-        trainingPipeline = createDefaultTrainingPipeline();
-    }
 
     public static CvPipeline createDefaultPipeline() {
         try {
@@ -477,15 +610,5 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         }
     }
 
-    public static CvPipeline createDefaultTrainingPipeline() {
-        try {
-            String xml = IOUtils.toString(AdvancedLoosePartFeeder.class
-                    .getResource("AdvancedLoosePartFeeder-DefaultTrainingPipeline.xml"));
-            return new CvPipeline(xml);
-        }
-        catch (Exception e) {
-            throw new Error(e);
-        }
-    }
 
 }

@@ -30,6 +30,7 @@ import javax.imageio.ImageIO;
 import javax.swing.AbstractAction;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
@@ -116,6 +117,10 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
     private JTextField retryCountTf;
     private JTextField pickRetryCount;
     private JComboBox<AbstractVisionSettings> fiducialVisionSettingsCombo;
+    private JCheckBox useAdvancedCameraCalibration;
+    private JCheckBox useAsyncGcodeMotion;
+    private JTextField recenterToleranceMm;
+    private JTextField recenterMaxPasses;
 
     private MutableLocationProxy firstRowFirstColumn = new MutableLocationProxy();
     private MutableLocationProxy firstRowLastColumn = new MutableLocationProxy();
@@ -397,7 +402,9 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
                 FormSpecs.RELATED_GAP_COLSPEC, FormSpecs.DEFAULT_COLSPEC, FormSpecs.RELATED_GAP_COLSPEC,
                 FormSpecs.DEFAULT_COLSPEC, FormSpecs.RELATED_GAP_COLSPEC, FormSpecs.DEFAULT_COLSPEC, },
                 new RowSpec[] { FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC,
-                        FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, }));
+                        FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC,
+                        FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC,
+                        FormSpecs.DEFAULT_ROWSPEC, }));
 
         JLabel lblFiducialVisionSettings = new JLabel("Top Vision Alignment Model");
         visionPanel.add(lblFiducialVisionSettings, "2, 2");
@@ -422,20 +429,25 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         }));
         visionPanel.add(btnResetPipeline, "6, 4");
 
-        JLabel lblTrainingPipeline = new JLabel("Training Pipeline");
-        visionPanel.add(lblTrainingPipeline, "2, 6");
+        useAdvancedCameraCalibration = new JCheckBox("Use Advanced Camera Calibration");
+        visionPanel.add(useAdvancedCameraCalibration, "2, 6, 3, 1");
 
-        JButton btnEditTrainingPipeline = new JButton("Edit");
-        btnEditTrainingPipeline.addActionListener(e -> UiUtils.messageBoxOnException(() -> {
-            editTrainingPipeline();
-        }));
-        visionPanel.add(btnEditTrainingPipeline, "4, 6");
+        useAsyncGcodeMotion = new JCheckBox("Async Gcode Recenter Waits");
+        visionPanel.add(useAsyncGcodeMotion, "6, 6");
 
-        JButton btnResetTrainingPipeline = new JButton("Reset");
-        btnResetTrainingPipeline.addActionListener(e -> UiUtils.messageBoxOnException(() -> {
-            resetTrainingPipeline();
-        }));
-        visionPanel.add(btnResetTrainingPipeline, "6, 6");
+        JLabel lblRecenterToleranceMm = new JLabel("Recenter Tolerance (mm)");
+        visionPanel.add(lblRecenterToleranceMm, "2, 8");
+
+        recenterToleranceMm = new JTextField();
+        recenterToleranceMm.setColumns(10);
+        visionPanel.add(recenterToleranceMm, "4, 8");
+
+        JLabel lblRecenterMaxPasses = new JLabel("Recenter Max Passes");
+        visionPanel.add(lblRecenterMaxPasses, "2, 10");
+
+        recenterMaxPasses = new JTextField();
+        recenterMaxPasses.setColumns(10);
+        visionPanel.add(recenterMaxPasses, "4, 10");
     }
 
     // ---------- Bindings ----------
@@ -468,6 +480,10 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         addWrappedBinding(feeder, "part", comboBoxPart, "selectedItem");
         addWrappedBinding(feeder, "feedRetryCount", retryCountTf, "text", intConverter);
         addWrappedBinding(feeder, "pickRetryCount", pickRetryCount, "text", intConverter);
+        addWrappedBinding(feeder, "useAdvancedCameraCalibration", useAdvancedCameraCalibration, "selected");
+        addWrappedBinding(feeder, "useAsyncGcodeMotion", useAsyncGcodeMotion, "selected");
+        addWrappedBinding(feeder, "recenterToleranceMm", recenterToleranceMm, "text", doubleConverter);
+        addWrappedBinding(feeder, "recenterMaxPasses", recenterMaxPasses, "text", intConverter);
         addWrappedBinding(feeder, "fiducialVisionSettingsId", fiducialVisionSettingsCombo, "selectedItem",
                 new Converter<String, AbstractVisionSettings>() {
                     @Override
@@ -546,6 +562,8 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         ComponentDecorators.decorateWithAutoSelectAndLengthConversion(textFieldTrayRotation);
         ComponentDecorators.decorateWithAutoSelect(retryCountTf);
         ComponentDecorators.decorateWithAutoSelect(pickRetryCount);
+        ComponentDecorators.decorateWithAutoSelectAndLengthConversion(recenterToleranceMm);
+        ComponentDecorators.decorateWithAutoSelect(recenterMaxPasses);
         ComponentDecorators.decorateWithAutoSelect(textFieldTrayCountRows);
         ComponentDecorators.decorateWithAutoSelect(textFieldTrayCountCols);
         ComponentDecorators.decorateWithAutoSelect(textFieldFeedCount);
@@ -680,19 +698,4 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         return feeder.getFiducialVisionSettings();
     }
 
-    private void editTrainingPipeline() throws Exception {
-        if (feeder.getPart() == null) {
-            throw new Exception("Feeder " + feeder.getName() + " has no part.");
-        }
-        CvPipeline pipeline = feeder.getTrainingPipeline();
-        pipeline.setProperty("camera", Configuration.get().getMachine().getDefaultHead().getDefaultCamera());
-        pipeline.setProperty("feeder", feeder);
-        CvPipelineEditor editor = new CvPipelineEditor(pipeline);
-        JDialog dialog = new CvPipelineEditorDialog(MainFrame.get(), feeder.getPart().getId() + " Training Pipeline", editor);
-        dialog.setVisible(true);
-    }
-
-    private void resetTrainingPipeline() {
-        feeder.resetTrainingPipeline();
-    }
 }
