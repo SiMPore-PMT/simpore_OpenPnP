@@ -404,7 +404,7 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
                 new RowSpec[] { FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC,
                         FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC,
                         FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC,
-                        FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, }));
+                        FormSpecs.DEFAULT_ROWSPEC, }));
 
         JLabel lblFiducialVisionSettings = new JLabel("Top Vision Alignment Model");
         visionPanel.add(lblFiducialVisionSettings, "2, 2");
@@ -429,40 +429,25 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         }));
         visionPanel.add(btnResetPipeline, "6, 4");
 
-        JLabel lblTrainingPipeline = new JLabel("Training Pipeline");
-        visionPanel.add(lblTrainingPipeline, "2, 6");
-
-        JButton btnEditTrainingPipeline = new JButton("Edit");
-        btnEditTrainingPipeline.addActionListener(e -> UiUtils.messageBoxOnException(() -> {
-            editTrainingPipeline();
-        }));
-        visionPanel.add(btnEditTrainingPipeline, "4, 6");
-
-        JButton btnResetTrainingPipeline = new JButton("Reset");
-        btnResetTrainingPipeline.addActionListener(e -> UiUtils.messageBoxOnException(() -> {
-            resetTrainingPipeline();
-        }));
-        visionPanel.add(btnResetTrainingPipeline, "6, 6");
-
         useAdvancedCameraCalibration = new JCheckBox("Use Advanced Camera Calibration");
-        visionPanel.add(useAdvancedCameraCalibration, "2, 8, 3, 1");
+        visionPanel.add(useAdvancedCameraCalibration, "2, 6, 3, 1");
 
         useAsyncGcodeMotion = new JCheckBox("Async Gcode Recenter Waits");
-        visionPanel.add(useAsyncGcodeMotion, "6, 8");
+        visionPanel.add(useAsyncGcodeMotion, "6, 6");
 
         JLabel lblRecenterToleranceMm = new JLabel("Recenter Tolerance (mm)");
-        visionPanel.add(lblRecenterToleranceMm, "2, 10");
+        visionPanel.add(lblRecenterToleranceMm, "2, 8");
 
         recenterToleranceMm = new JTextField();
         recenterToleranceMm.setColumns(10);
-        visionPanel.add(recenterToleranceMm, "4, 10");
+        visionPanel.add(recenterToleranceMm, "4, 8");
 
         JLabel lblRecenterMaxPasses = new JLabel("Recenter Max Passes");
-        visionPanel.add(lblRecenterMaxPasses, "2, 12");
+        visionPanel.add(lblRecenterMaxPasses, "2, 10");
 
         recenterMaxPasses = new JTextField();
         recenterMaxPasses.setColumns(10);
-        visionPanel.add(recenterMaxPasses, "4, 12");
+        visionPanel.add(recenterMaxPasses, "4, 10");
     }
 
     // ---------- Bindings ----------
@@ -713,19 +698,4 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         return feeder.getFiducialVisionSettings();
     }
 
-    private void editTrainingPipeline() throws Exception {
-        if (feeder.getPart() == null) {
-            throw new Exception("Feeder " + feeder.getName() + " has no part.");
-        }
-        CvPipeline pipeline = feeder.getTrainingPipeline();
-        pipeline.setProperty("camera", Configuration.get().getMachine().getDefaultHead().getDefaultCamera());
-        pipeline.setProperty("feeder", feeder);
-        CvPipelineEditor editor = new CvPipelineEditor(pipeline);
-        JDialog dialog = new CvPipelineEditorDialog(MainFrame.get(), feeder.getPart().getId() + " Training Pipeline", editor);
-        dialog.setVisible(true);
-    }
-
-    private void resetTrainingPipeline() {
-        feeder.resetTrainingPipeline();
-    }
 }

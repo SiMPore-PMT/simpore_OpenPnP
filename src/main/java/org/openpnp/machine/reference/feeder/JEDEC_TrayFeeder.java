@@ -52,9 +52,6 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     @Element(required = false)
     private CvPipeline pipeline = createDefaultPipeline();
 
-    @Element(required = false)
-    private CvPipeline trainingPipeline = createDefaultTrainingPipeline();
-
     @Transient
     private String fiducialVisionSettingsId;
 
@@ -601,13 +598,6 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         pipeline = createDefaultPipeline();
     }
 
-    public CvPipeline getTrainingPipeline() {
-        return trainingPipeline;
-    }
-
-    public void resetTrainingPipeline() {
-        trainingPipeline = createDefaultTrainingPipeline();
-    }
 
     public static CvPipeline createDefaultPipeline() {
         try {
@@ -620,15 +610,5 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         }
     }
 
-    public static CvPipeline createDefaultTrainingPipeline() {
-        try {
-            String xml = IOUtils.toString(AdvancedLoosePartFeeder.class
-                    .getResource("AdvancedLoosePartFeeder-DefaultTrainingPipeline.xml"));
-            return new CvPipeline(xml);
-        }
-        catch (Exception e) {
-            throw new Error(e);
-        }
-    }
 
 }
