@@ -25,6 +25,7 @@ import org.openpnp.util.VisionUtils;
 import org.openpnp.vision.pipeline.CvPipeline;
 import org.simpleframework.xml.Element;
 import org.simpleframework.xml.Root;
+import org.simpleframework.xml.Transient;
 import org.pmw.tinylog.Logger;
 import org.simpleframework.xml.Attribute;
 import org.simpleframework.xml.core.Commit;
@@ -54,7 +55,7 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     @Element(required = false)
     private CvPipeline trainingPipeline = createDefaultTrainingPipeline();
 
-    @Attribute(name = "fiducialVisionSettingsId", required = false)
+    @Transient
     private String fiducialVisionSettingsId;
 
     @Attribute(required = false)
