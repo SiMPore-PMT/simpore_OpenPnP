@@ -30,6 +30,7 @@ import javax.imageio.ImageIO;
 import javax.swing.AbstractAction;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
@@ -116,6 +117,10 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
     private JTextField retryCountTf;
     private JTextField pickRetryCount;
     private JComboBox<AbstractVisionSettings> fiducialVisionSettingsCombo;
+    private JCheckBox useAdvancedCameraCalibration;
+    private JCheckBox useAsyncGcodeMotion;
+    private JTextField recenterToleranceMm;
+    private JTextField recenterMaxPasses;
 
     private MutableLocationProxy firstRowFirstColumn = new MutableLocationProxy();
     private MutableLocationProxy firstRowLastColumn = new MutableLocationProxy();
@@ -397,6 +402,8 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
                 FormSpecs.RELATED_GAP_COLSPEC, FormSpecs.DEFAULT_COLSPEC, FormSpecs.RELATED_GAP_COLSPEC,
                 FormSpecs.DEFAULT_COLSPEC, FormSpecs.RELATED_GAP_COLSPEC, FormSpecs.DEFAULT_COLSPEC, },
                 new RowSpec[] { FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC,
+                        FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC,
+                        FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC,
                         FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, }));
 
         JLabel lblFiducialVisionSettings = new JLabel("Top Vision Alignment Model");
@@ -436,6 +443,26 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
             resetTrainingPipeline();
         }));
         visionPanel.add(btnResetTrainingPipeline, "6, 6");
+
+        useAdvancedCameraCalibration = new JCheckBox("Use Advanced Camera Calibration");
+        visionPanel.add(useAdvancedCameraCalibration, "2, 8, 3, 1");
+
+        useAsyncGcodeMotion = new JCheckBox("Async Gcode Recenter Waits");
+        visionPanel.add(useAsyncGcodeMotion, "6, 8");
+
+        JLabel lblRecenterToleranceMm = new JLabel("Recenter Tolerance (mm)");
+        visionPanel.add(lblRecenterToleranceMm, "2, 10");
+
+        recenterToleranceMm = new JTextField();
+        recenterToleranceMm.setColumns(10);
+        visionPanel.add(recenterToleranceMm, "4, 10");
+
+        JLabel lblRecenterMaxPasses = new JLabel("Recenter Max Passes");
+        visionPanel.add(lblRecenterMaxPasses, "2, 12");
+
+        recenterMaxPasses = new JTextField();
+        recenterMaxPasses.setColumns(10);
+        visionPanel.add(recenterMaxPasses, "4, 12");
     }
 
     // ---------- Bindings ----------
@@ -468,6 +495,10 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         addWrappedBinding(feeder, "part", comboBoxPart, "selectedItem");
         addWrappedBinding(feeder, "feedRetryCount", retryCountTf, "text", intConverter);
         addWrappedBinding(feeder, "pickRetryCount", pickRetryCount, "text", intConverter);
+        addWrappedBinding(feeder, "useAdvancedCameraCalibration", useAdvancedCameraCalibration, "selected");
+        addWrappedBinding(feeder, "useAsyncGcodeMotion", useAsyncGcodeMotion, "selected");
+        addWrappedBinding(feeder, "recenterToleranceMm", recenterToleranceMm, "text", doubleConverter);
+        addWrappedBinding(feeder, "recenterMaxPasses", recenterMaxPasses, "text", intConverter);
         addWrappedBinding(feeder, "fiducialVisionSettingsId", fiducialVisionSettingsCombo, "selectedItem",
                 new Converter<String, AbstractVisionSettings>() {
                     @Override
@@ -546,6 +577,8 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         ComponentDecorators.decorateWithAutoSelectAndLengthConversion(textFieldTrayRotation);
         ComponentDecorators.decorateWithAutoSelect(retryCountTf);
         ComponentDecorators.decorateWithAutoSelect(pickRetryCount);
+        ComponentDecorators.decorateWithAutoSelectAndLengthConversion(recenterToleranceMm);
+        ComponentDecorators.decorateWithAutoSelect(recenterMaxPasses);
         ComponentDecorators.decorateWithAutoSelect(textFieldTrayCountRows);
         ComponentDecorators.decorateWithAutoSelect(textFieldTrayCountCols);
         ComponentDecorators.decorateWithAutoSelect(textFieldFeedCount);
