@@ -24,6 +24,7 @@ import org.openpnp.util.OpenCvUtils;
 import org.openpnp.util.VisionUtils;
 import org.openpnp.vision.pipeline.CvPipeline;
 import org.simpleframework.xml.Element;
+import org.simpleframework.xml.Root;
 import org.pmw.tinylog.Logger;
 import org.simpleframework.xml.Attribute;
 import org.simpleframework.xml.core.Commit;
@@ -39,6 +40,7 @@ import java.util.List;
  * Combines ReferenceRotatedTrayFeeder structure and imaging pipeline of AdvancedLoosePartFeeder.
  * Allows for part to be posed, and tip to be adjusted before initial pick from tray
  */
+@Root(strict = false)
 public class JEDEC_TrayFeeder extends ReferenceFeeder {
     public static final double DEFAULT_RECENTER_TOLERANCE_MM = 0.02;
     public static final int DEFAULT_RECENTER_MAX_PASSES = 3;
