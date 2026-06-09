@@ -52,7 +52,7 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     @Element(required = false)
     private CvPipeline trainingPipeline = createDefaultTrainingPipeline();
 
-    @Attribute(name = "fiducial-vision-settings-id", required = false)
+    @Attribute(name = "fiducialVisionSettingsId", required = false)
     private String fiducialVisionSettingsId;
 
     @Attribute(required = false)
