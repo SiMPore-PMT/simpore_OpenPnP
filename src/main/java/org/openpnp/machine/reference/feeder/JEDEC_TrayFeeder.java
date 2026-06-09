@@ -67,6 +67,9 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     @Attribute(required = false)
     private int recenterMaxPasses = DEFAULT_RECENTER_MAX_PASSES;
 
+    @Attribute(required = false)
+    private boolean useDetectedAngleForPickRotation = false;
+
     private Location pickLocation;
     private Location lastLocation;
     @Override
@@ -232,14 +235,19 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
                 });
                 RotatedRect result = results.get(0);
                 Location partLocation = getPixelLocation(camera, result.center.x, result.center.y);
-                // Get the result's Location
-                // Update the location with the result's rotation
-                partLocation = partLocation.derive(null, null, null, -(result.angle + getLocation().getRotation()));
-                // Update the location with the correct Z, which is the configured Location's Z.
+                // The pipeline's RotatedRect angle is useful for debugging, but OpenCV wraps and
+                // ambiguously reports it for square or near-square die. Use the configured nominal
+                // tray pocket/component rotation for pick rotation by default, and only retain the
+                // detected-angle behavior when explicitly enabled for legacy setups.
+                double pickRotation = getPickRotation(startPoint, result.angle);
+                Logger.debug("{}.locateFeederPart(): detected angle {}, pick rotation {}",
+                        getName(), result.angle, pickRotation);
+                // Update the location with the correct Z, which is the configured Location's Z,
+                // and with the nominal pocket/component rotation unless legacy behavior is enabled.
                 partLocation =
                         partLocation.derive(null, null,
                                 this.location.convertToUnits(partLocation.getUnits()).getZ(),
-                                null);
+                                pickRotation);
                 MainFrame.get().getCameraViews().getCameraView(camera)
                         .showFilteredImage(OpenCvUtils.toBufferedImage(pipeline.getWorkingImage()), 250);
 
@@ -267,6 +275,19 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
             }
         }
         return null;
+    }
+
+    double getPickRotation(Location startPoint, double detectedAngle) {
+        return calculatePickRotation(isUseDetectedAngleForPickRotation(),
+                getLocation().getRotation(), startPoint.getRotation(), detectedAngle);
+    }
+
+    static double calculatePickRotation(boolean useDetectedAngleForPickRotation,
+            double feederRotation, double nominalPocketRotation, double detectedAngle) {
+        if (useDetectedAngleForPickRotation) {
+            return -(detectedAngle + feederRotation);
+        }
+        return nominalPocketRotation;
     }
 
     private double getEffectiveRecenterToleranceMm() {
@@ -506,6 +527,16 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         int oldValue = this.recenterMaxPasses;
         this.recenterMaxPasses = Math.max(recenterMaxPasses, 1);
         firePropertyChange("recenterMaxPasses", oldValue, this.recenterMaxPasses);
+    }
+
+    public boolean isUseDetectedAngleForPickRotation() {
+        return useDetectedAngleForPickRotation;
+    }
+
+    public void setUseDetectedAngleForPickRotation(boolean useDetectedAngleForPickRotation) {
+        boolean oldValue = this.useDetectedAngleForPickRotation;
+        this.useDetectedAngleForPickRotation = useDetectedAngleForPickRotation;
+        firePropertyChange("useDetectedAngleForPickRotation", oldValue, useDetectedAngleForPickRotation);
     }
 
     public double getComponentRotationInTray() {
