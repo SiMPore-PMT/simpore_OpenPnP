@@ -2,11 +2,14 @@ package org.openpnp.machine.reference.feeder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.util.Arrays;
+
 import org.junit.jupiter.api.Test;
 import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder.FirstRasterDirection;
 import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder.GridIndex;
 import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder.RasterPattern;
 import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder.StartCorner;
+import org.openpnp.util.Utils2D;
 
 public class JEDEC_TrayFeederTest {
     @Test
@@ -57,16 +60,37 @@ public class JEDEC_TrayFeederTest {
 
     @Test
     public void componentRotationIsNormalizedToQuadrants() {
+        assertEquals(0, JEDEC_TrayFeeder.normalizeComponentRotationInTray(2), 0.0);
         assertEquals(90, JEDEC_TrayFeeder.normalizeComponentRotationInTray(88), 0.0);
         assertEquals(180, JEDEC_TrayFeeder.normalizeComponentRotationInTray(181), 0.0);
         assertEquals(270, JEDEC_TrayFeeder.normalizeComponentRotationInTray(269), 0.0);
     }
 
     @Test
-    public void pickRotationDefaultsAreSafe() {
-        assertEquals(17, JEDEC_TrayFeeder.calculatePickRotation(false, false, 17, 107, 90, 33), 0.0);
-        assertEquals(107, JEDEC_TrayFeeder.calculatePickRotation(true, false, 17, 17, 90, 33), 0.0);
-        assertEquals(-50, JEDEC_TrayFeeder.calculatePickRotation(false, true, 17, 17, 90, 33), 0.0);
+    public void trayVisionPickRotationAlwaysUsesDetectedAngle() {
+        assertEquals(Utils2D.angleNorm(-(1.5 + 0), 180),
+                JEDEC_TrayFeeder.calculateTrayVisionPickRotation(0, 1.5), 0.0001);
+        assertEquals(Utils2D.angleNorm(-(1.5 + 10), 180),
+                JEDEC_TrayFeeder.calculateTrayVisionPickRotation(10, 1.5), 0.0001);
+        assertEquals(Utils2D.angleNorm(-(0 + 10), 180),
+                JEDEC_TrayFeeder.calculateTrayVisionPickRotation(10, Double.NaN), 0.0001);
+    }
+
+    @Test
+    public void pickRotationCannotIncludeComponentRotation() {
+        long helperCount = Arrays.stream(JEDEC_TrayFeeder.class.getDeclaredMethods())
+                .filter(method -> method.getName().equals("calculateTrayVisionPickRotation"))
+                .peek(method -> assertEquals(2, method.getParameterCount()))
+                .count();
+        assertEquals(1, helperCount);
+    }
+
+    @Test
+    public void postPickRotationAppliesComponentRotationAfterPickup() {
+        assertEquals(10, JEDEC_TrayFeeder.calculatePostPickRotation(10, 0), 0.0001);
+        assertEquals(100, JEDEC_TrayFeeder.calculatePostPickRotation(10, 90), 0.0001);
+        assertEquals(-80, JEDEC_TrayFeeder.calculatePostPickRotation(10, 270), 0.0001);
+        assertEquals(90, JEDEC_TrayFeeder.calculatePostPickRotation(Double.NaN, 88), 0.0001);
     }
 
     private static void assertGrid(int feedIndex, int row, int col, StartCorner startCorner,

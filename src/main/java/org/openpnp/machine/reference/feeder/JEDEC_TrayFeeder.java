@@ -69,12 +69,6 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     private int recenterMaxPasses = DEFAULT_RECENTER_MAX_PASSES;
 
     @Attribute(required = false)
-    private boolean useDetectedAngleForPickRotation = false;
-
-    @Attribute(required = false)
-    private boolean rotateNozzleAtPick = false;
-
-    @Attribute(required = false)
     private StartCorner startCorner = StartCorner.BOTTOM_LEFT;
 
     @Attribute(required = false)
@@ -237,13 +231,7 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         Location rowStep = getRowVector().convertToUnits(origin.getUnits()).multiply(gridIndex.row);
         Location pocketCenter = origin.add(colStep).add(rowStep);
         double z = location.convertToUnits(pocketCenter.getUnits()).getZ();
-        return pocketCenter.derive(null, null, z, getSafeNominalPickRotation(pocketCenter));
-    }
-
-    double getSafeNominalPickRotation(Location pocketCenter) {
-        return calculatePickRotation(isRotateNozzleAtPick(), false,
-                getLocation().getRotation(), getLocation().getRotation(),
-                getComponentRotationInTray(), Double.NaN);
+        return pocketCenter.derive(null, null, z, getLocation().getRotation());
     }
 
     public static GridIndex getGridIndexForFeed(int feedIndexBase0, int rows, int cols,
@@ -314,10 +302,9 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     private Location locateFeederPart(Nozzle nozzle, Location startPoint) throws Exception {
         Camera camera = nozzle.getHead().getDefaultCamera();
 
-        // startPoint contains the nominal pick rotation, e.g. componentRotationInTray.
-        // Do not use that rotation for the head-mounted top-camera vision move.
-        // The camera should image the tray pocket using its own normal viewing rotation;
-        // the final pick location will still receive the configured part pick rotation.
+        // startPoint contains only the stable nominal tray/camera rotation. The
+        // configured componentRotationInTray is intentionally excluded from pick R
+        // to avoid runout-compensated XY shifts before pickup.
         Location cameraLocation = camera.getLocation();
         double cameraRotation = cameraLocation.getRotation();
         if (Double.isNaN(cameraRotation)) {
@@ -358,15 +345,17 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
                 });
                 RotatedRect result = results.get(0);
                 Location partLocation = getPixelLocation(camera, result.center.x, result.center.y);
-                // Detected RotatedRect angle is retained for diagnostics only by default.
-                // It can affect pick R only when the legacy/debug option is explicitly enabled.
+                // The top-camera RotatedRect angle is required for square die / square
+                // nozzle pick alignment and is always used for pick rotation. The configured
+                // componentRotationInTray is not included here; it is applied in postPick()
+                // after the die is held.
                 lastDetectedAngle = result.angle;
                 double pickRotation = getPickRotation(startPoint, result.angle);
                 Logger.debug("{}.locateFeederPart(): nominal rotation {}, detected offset {}, pick rotation {}",
                         getName(), startPoint.getRotation(), result.angle, pickRotation);
-                // Update the location with the configured pick Z and the safe pick rotation.
-                // The default safe rotation deliberately excludes component rotation and
-                // detected angle to avoid runout-compensation XY shifts before pickup.
+                // Update the location with the configured pick Z and the detected-angle pick
+                // rotation, excluding componentRotationInTray to avoid runout-compensated XY
+                // shifts before pickup.
                 partLocation =
                         partLocation.derive(null, null,
                                 this.location.convertToUnits(partLocation.getUnits()).getZ(),
@@ -401,22 +390,24 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     }
 
     double getPickRotation(Location startPoint, double detectedAngle) {
-        return calculatePickRotation(isRotateNozzleAtPick(), isUseDetectedAngleForPickRotation(),
-                getLocation().getRotation(), startPoint.getRotation(), getComponentRotationInTray(), detectedAngle);
+        return calculateTrayVisionPickRotation(getLocation().getRotation(), detectedAngle);
     }
 
-    public static double calculatePickRotation(boolean rotateNozzleAtPick, boolean useDetectedAngleForPickRotation,
-            double trayRotation, double nominalPocketRotation, double componentRotationInTray, double detectedAngle) {
-        if (useDetectedAngleForPickRotation) {
-            // Legacy/debug absolute-angle behavior. Disabled by default because nozzle
-            // runout compensation can shift XY when pick R changes.
-            return -(detectedAngle + trayRotation);
+    public static double calculateTrayVisionPickRotation(double trayRotation, double detectedAngle) {
+        if (Double.isNaN(detectedAngle) || Double.isInfinite(detectedAngle)) {
+            detectedAngle = 0;
         }
-        if (rotateNozzleAtPick) {
-            return trayRotation + normalizeComponentRotationInTray(componentRotationInTray);
+
+        // Preserve the previous working sign convention from JEDEC_TrayFeeder:
+        // old working behavior used -(result.angle + getLocation().getRotation()).
+        return Utils2D.angleNorm(-(detectedAngle + trayRotation), 180);
+    }
+
+    public static double calculatePostPickRotation(double currentRotation, double componentRotationInTray) {
+        if (Double.isNaN(currentRotation) || Double.isInfinite(currentRotation)) {
+            currentRotation = 0;
         }
-        // Safe default: stable tray/display rotation only, no component or detected angle.
-        return trayRotation;
+        return Utils2D.angleNorm(currentRotation + normalizeComponentRotationInTray(componentRotationInTray), 180);
     }
 
     public static double normalizeComponentRotationInTray(double value) {
@@ -514,6 +505,30 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         }
         return testLocation;
     }
+    @Override
+    public void postPick(Nozzle nozzle) throws Exception {
+        super.postPick(nozzle);
+
+        double componentRotation = normalizeComponentRotationInTray(getComponentRotationInTray());
+        if (componentRotation == 0) {
+            return;
+        }
+
+        Location current = nozzle.getLocation();
+        double currentR = current.getRotation();
+        if (Double.isNaN(currentR) || Double.isInfinite(currentR)) {
+            currentR = 0;
+        }
+        Location target = current.derive(null, null, null,
+                calculatePostPickRotation(currentR, componentRotation));
+
+        Logger.debug("{}.postPick(): rotating nozzle after pick by componentRotationInTray {} from {} to {}",
+                getName(), componentRotation, currentR, target.getRotation());
+
+        MovableUtils.moveToLocationAtSafeZ(nozzle, target);
+        nozzle.waitForCompletion(CompletionType.WaitForStillstand);
+    }
+
     /**
      * Returns if the feeder can take back a part.
      * Makes the assumption, that after each feed a pick followed,
@@ -704,16 +719,6 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         firePropertyChange("recenterMaxPasses", oldValue, this.recenterMaxPasses);
     }
 
-    public boolean isUseDetectedAngleForPickRotation() {
-        return useDetectedAngleForPickRotation;
-    }
-
-    public void setUseDetectedAngleForPickRotation(boolean useDetectedAngleForPickRotation) {
-        boolean oldValue = this.useDetectedAngleForPickRotation;
-        this.useDetectedAngleForPickRotation = useDetectedAngleForPickRotation;
-        firePropertyChange("useDetectedAngleForPickRotation", oldValue, useDetectedAngleForPickRotation);
-    }
-
     public double getComponentRotationInTray() {
         return componentRotationInTray;
     }
@@ -722,16 +727,6 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         double oldValue = this.componentRotationInTray;
         this.componentRotationInTray = normalizeComponentRotationInTray(componentRotationInTray);
         firePropertyChange("componentRotationInTray", oldValue, this.componentRotationInTray);
-    }
-
-    public boolean isRotateNozzleAtPick() {
-        return rotateNozzleAtPick;
-    }
-
-    public void setRotateNozzleAtPick(boolean rotateNozzleAtPick) {
-        boolean oldValue = this.rotateNozzleAtPick;
-        this.rotateNozzleAtPick = rotateNozzleAtPick;
-        firePropertyChange("rotateNozzleAtPick", oldValue, rotateNozzleAtPick);
     }
 
     public StartCorner getStartCorner() {
