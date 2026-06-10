@@ -21,6 +21,7 @@ import org.openpnp.spi.Nozzle;
 import org.openpnp.spi.PropertySheetHolder;
 import org.openpnp.util.MovableUtils;
 import org.openpnp.util.OpenCvUtils;
+import org.openpnp.util.Utils2D;
 import org.openpnp.util.VisionUtils;
 import org.openpnp.vision.pipeline.CvPipeline;
 import org.simpleframework.xml.Element;
@@ -68,7 +69,57 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     private int recenterMaxPasses = DEFAULT_RECENTER_MAX_PASSES;
 
     @Attribute(required = false)
-    private boolean useDetectedAngleForPickRotation = false;
+    private StartCorner startCorner = StartCorner.BOTTOM_LEFT;
+
+    @Attribute(required = false)
+    private FirstRasterDirection firstRasterDirection = FirstRasterDirection.ROW;
+
+    @Attribute(required = false)
+    private RasterPattern rasterPattern = RasterPattern.ZIG_ZAG;
+
+    /**
+     * Canonical physical grid origin: row 0, column 0 is the top-left tray pocket.
+     * columnVector and rowVector are already in machine coordinates and must not be
+     * rotated again by location.R.
+     */
+    @Element(required = false)
+    private Location gridOrigin = new Location(LengthUnit.Millimeters);
+
+    @Element(required = false)
+    private Location columnVector = new Location(LengthUnit.Millimeters);
+
+    @Element(required = false)
+    private Location rowVector = new Location(LengthUnit.Millimeters);
+
+    @Transient
+    private double lastDetectedAngle = Double.NaN;
+
+    public enum StartCorner {
+        TOP_LEFT,
+        TOP_RIGHT,
+        BOTTOM_LEFT,
+        BOTTOM_RIGHT
+    }
+
+    public enum FirstRasterDirection {
+        ROW,
+        COLUMN
+    }
+
+    public enum RasterPattern {
+        ZIG_ZAG,
+        SNAKE
+    }
+
+    public static class GridIndex {
+        public final int row;
+        public final int col;
+
+        GridIndex(int row, int col) {
+            this.row = row;
+            this.col = col;
+        }
+    }
 
     private Location pickLocation;
     private Location lastLocation;
@@ -81,7 +132,7 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     private int trayCountCols = 1;
     @Attribute
     private int trayCountRows = 1;
-    @Element
+    @Element(required = false)
     private Location offsets = new Location(LengthUnit.Millimeters);
     @Attribute
     private int feedCount = 0;  // UI is base 1, 0 is ok because a pick operation always preceded by a feed, which increments feedCount to 1
@@ -96,9 +147,9 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     @Attribute(required=false)
     private boolean legacyPickingInProgress = false;
 
-    @Element
+    @Element(required = false)
     protected Location lastComponentLocation = new Location(LengthUnit.Millimeters);
-    @Element
+    @Element(required = false)
     protected Location firstRowLastComponentLocation = new Location(LengthUnit.Millimeters);
 
     @Commit
@@ -127,6 +178,8 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
             //Remove the deprecated attribute
             trayRotation = null;
         }
+        componentRotationInTray = normalizeComponentRotationInTray(componentRotationInTray);
+        migrateGridVectorsIfNeeded();
     }
 
 
@@ -145,7 +198,7 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         // Advance to exactly one next pocket per feed() call. If no part is found in that pocket,
         // throw a feed fault so the Job Processor fault window / limit logic can act on it.
         setFeedCount(getFeedCount() + 1);
-        Location nextPocket = getNextPocketLocation();
+        Location nextPocket = getNominalPocketLocation(getFeedCount() - 1);
         pickLocation = locateFeederPart(nozzle, nextPocket);
         if (pickLocation == null) {
             throw new Exception(
@@ -155,44 +208,89 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     }
 
     private Location getNextPocketLocation() {
-        int feedCountBase0 = feedCount -1; // UI uses feedCount base 1, the following calculations are base 0
-
-        // if feedCound is currently zero, assume its one
-        // this can happen if the pickLocation is requested before any feed operation
-        // return first location in that case
+        int feedCountBase0 = feedCount - 1;
         if (feedCount == 0) {
             feedCountBase0 = 0;
         }
-        // limit feed count to tray size
         else if (feedCount > (trayCountCols * trayCountRows)) {
-            feedCountBase0 = trayCountCols * trayCountRows -1;
+            feedCountBase0 = trayCountCols * trayCountRows - 1;
             Logger.warn("{}.getPickLocation: feedCount larger then tray, limiting to maximum.", getName());
         }
+        return getNominalPocketLocation(feedCountBase0);
+    }
 
-        //The original version of this feeder fed along either the rows or columns depending on
-        //which was shorter. This version now feeds along a row until it is empty and then it moves
-        //to the next row. However, if an old version of the feeder was just loaded and it was
-        //partially completed (not completely full or completely empty), the picking order will
-        //revert to the legacy method until the feed count is reset to 0.
-        int colNum, rowNum;
-        if (legacyPickingInProgress && (trayCountCols >= trayCountRows)) {
-            //Pick parts along a column (stepping through all the rows) until it is empty and then
-            //move to the next column
-            rowNum = feedCountBase0 % trayCountRows;
-            colNum = feedCountBase0 / trayCountRows;
-        } else {
-            //Pick parts along a row (stepping through all the columns) until it is empty and then
-            //move to the next row (the new default)
-            rowNum = feedCountBase0 / trayCountCols;
-            colNum = feedCountBase0 % trayCountCols;
+    public Location getNominalPocketLocation(int feedCountBase0) {
+        int rows = getEffectiveTrayCountRows();
+        int cols = getEffectiveTrayCountCols();
+        int clampedFeedIndex = Math.max(0, Math.min(feedCountBase0, rows * cols - 1));
+        GridIndex gridIndex = getGridIndexForFeed(clampedFeedIndex, rows, cols,
+                getStartCorner(), getFirstRasterDirection(), getRasterPattern());
+
+        Location origin = getGridOrigin().convertToUnits(Configuration.get().getSystemUnits());
+        Location colStep = getColumnVector().convertToUnits(origin.getUnits()).multiply(gridIndex.col);
+        Location rowStep = getRowVector().convertToUnits(origin.getUnits()).multiply(gridIndex.row);
+        Location pocketCenter = origin.add(colStep).add(rowStep);
+        double z = location.convertToUnits(pocketCenter.getUnits()).getZ();
+        return pocketCenter.derive(null, null, z, getLocation().getRotation());
+    }
+
+    public static GridIndex getGridIndexForFeed(int feedIndexBase0, int rows, int cols,
+            StartCorner startCorner, FirstRasterDirection firstRasterDirection, RasterPattern rasterPattern) {
+        rows = Math.max(rows, 1);
+        cols = Math.max(cols, 1);
+        int capacity = rows * cols;
+        int index = Math.max(0, Math.min(feedIndexBase0, capacity - 1));
+        startCorner = startCorner == null ? StartCorner.BOTTOM_LEFT : startCorner;
+        firstRasterDirection = firstRasterDirection == null ? FirstRasterDirection.ROW : firstRasterDirection;
+        rasterPattern = rasterPattern == null ? RasterPattern.ZIG_ZAG : rasterPattern;
+
+        boolean startTop = startCorner == StartCorner.TOP_LEFT || startCorner == StartCorner.TOP_RIGHT;
+        boolean startLeft = startCorner == StartCorner.TOP_LEFT || startCorner == StartCorner.BOTTOM_LEFT;
+
+        int row;
+        int col;
+        if (firstRasterDirection == FirstRasterDirection.ROW) {
+            int pass = index / cols;
+            int inPass = index % cols;
+            boolean reverse = rasterPattern == RasterPattern.SNAKE && (pass % 2) == 1;
+            row = startTop ? pass : rows - 1 - pass;
+            if (reverse) {
+                col = startLeft ? cols - 1 - inPass : inPass;
+            }
+            else {
+                col = startLeft ? inPass : cols - 1 - inPass;
+            }
+        }
+        else {
+            int pass = index / rows;
+            int inPass = index % rows;
+            boolean reverse = rasterPattern == RasterPattern.SNAKE && (pass % 2) == 1;
+            col = startLeft ? pass : cols - 1 - pass;
+            if (reverse) {
+                row = startTop ? rows - 1 - inPass : inPass;
+            }
+            else {
+                row = startTop ? inPass : rows - 1 - inPass;
+            }
         }
 
-        //The definition of the tray has row numbers increasing in the negative y direction so that
-        //is why we negate rowNum here:
-        Location delta = offsets.multiply(colNum, -rowNum, 0, 0).rotateXy(location.getRotation()).
-                derive(null, null, null, componentRotationInTray);
+        row = Math.max(0, Math.min(row, rows - 1));
+        col = Math.max(0, Math.min(col, cols - 1));
+        return new GridIndex(row, col);
+    }
 
-        return location.addWithRotation(delta);
+    public String getSecondRasterDirectionDescription() {
+        return getSecondRasterDirectionDescription(getStartCorner(), getFirstRasterDirection());
+    }
+
+    public static String getSecondRasterDirectionDescription(StartCorner startCorner,
+            FirstRasterDirection firstRasterDirection) {
+        startCorner = startCorner == null ? StartCorner.BOTTOM_LEFT : startCorner;
+        firstRasterDirection = firstRasterDirection == null ? FirstRasterDirection.ROW : firstRasterDirection;
+        if (firstRasterDirection == FirstRasterDirection.ROW) {
+            return (startCorner == StartCorner.TOP_LEFT || startCorner == StartCorner.TOP_RIGHT) ? "DOWN" : "UP";
+        }
+        return (startCorner == StartCorner.TOP_LEFT || startCorner == StartCorner.BOTTOM_LEFT) ? "RIGHT" : "LEFT";
     }
 
     /**
@@ -204,10 +302,9 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     private Location locateFeederPart(Nozzle nozzle, Location startPoint) throws Exception {
         Camera camera = nozzle.getHead().getDefaultCamera();
 
-        // startPoint contains the nominal pick rotation, e.g. componentRotationInTray.
-        // Do not use that rotation for the head-mounted top-camera vision move.
-        // The camera should image the tray pocket using its own normal viewing rotation;
-        // the final pick location will still receive the configured part pick rotation.
+        // startPoint contains only the stable nominal tray/camera rotation. The
+        // configured componentRotationInTray is intentionally excluded from pick R
+        // to avoid runout-compensated XY shifts before pickup.
         Location cameraLocation = camera.getLocation();
         double cameraRotation = cameraLocation.getRotation();
         if (Double.isNaN(cameraRotation)) {
@@ -248,17 +345,17 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
                 });
                 RotatedRect result = results.get(0);
                 Location partLocation = getPixelLocation(camera, result.center.x, result.center.y);
-                // The configured pocket/component rotation is the nominal orientation.
-                // The pipeline RotatedRect angle is used only as a small in-pocket angular
-                // correction relative to that nominal orientation. Do not use the old absolute
-                // formula -(detectedAngle + feederRotation) unless legacy behavior is explicitly
-                // enabled.
+                // The top-camera RotatedRect angle is required for square die / square
+                // nozzle pick alignment and is always used for pick rotation. The configured
+                // componentRotationInTray is not included here; it is applied in postPick()
+                // after the die is held.
+                lastDetectedAngle = result.angle;
                 double pickRotation = getPickRotation(startPoint, result.angle);
                 Logger.debug("{}.locateFeederPart(): nominal rotation {}, detected offset {}, pick rotation {}",
                         getName(), startPoint.getRotation(), result.angle, pickRotation);
-                // Update the location with the correct Z, which is the configured Location's Z,
-                // and with the configured plus detected-offset pick rotation unless legacy
-                // behavior is enabled.
+                // Update the location with the configured pick Z and the detected-angle pick
+                // rotation, excluding componentRotationInTray to avoid runout-compensated XY
+                // shifts before pickup.
                 partLocation =
                         partLocation.derive(null, null,
                                 this.location.convertToUnits(partLocation.getUnits()).getZ(),
@@ -293,21 +390,42 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     }
 
     double getPickRotation(Location startPoint, double detectedAngle) {
-        return calculatePickRotation(isUseDetectedAngleForPickRotation(),
-                getLocation().getRotation(), startPoint.getRotation(), detectedAngle);
+        return calculateTrayVisionPickRotation(getLocation().getRotation(), detectedAngle);
     }
 
-    static double calculatePickRotation(boolean useDetectedAngleForPickRotation,
-            double feederRotation, double nominalPocketRotation, double detectedAngle) {
-        if (useDetectedAngleForPickRotation) {
-            // Legacy absolute-angle behavior. Disabled by default.
-            return -(detectedAngle + feederRotation);
+    public static double calculateTrayVisionPickRotation(double trayRotation, double detectedAngle) {
+        if (Double.isNaN(detectedAngle) || Double.isInfinite(detectedAngle)) {
+            detectedAngle = 0;
         }
 
-        // Default behavior:
-        // nominalPocketRotation is the configured tray/component orientation.
-        // detectedAngle is the small in-pocket angular error measured by feeder vision.
-        return nominalPocketRotation + detectedAngle;
+        // Preserve the previous working sign convention from JEDEC_TrayFeeder:
+        // old working behavior used -(result.angle + getLocation().getRotation()).
+        return Utils2D.angleNorm(-(detectedAngle + trayRotation), 180);
+    }
+
+    public static double calculatePostPickRotation(double currentRotation, double componentRotationInTray) {
+        if (Double.isNaN(currentRotation) || Double.isInfinite(currentRotation)) {
+            currentRotation = 0;
+        }
+        return Utils2D.angleNorm(currentRotation + normalizeComponentRotationInTray(componentRotationInTray), 180);
+    }
+
+    public static double normalizeComponentRotationInTray(double value) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            return 0;
+        }
+        double normalized = Utils2D.angleNorm(value, 180);
+        double[] allowed = new double[] { 0, 90, 180, -90 };
+        double best = allowed[0];
+        double bestDistance = Double.MAX_VALUE;
+        for (double candidate : allowed) {
+            double distance = Math.abs(Utils2D.angleNorm(normalized - candidate, 180));
+            if (distance < bestDistance) {
+                best = candidate;
+                bestDistance = distance;
+            }
+        }
+        return best < 0 ? 270 : best;
     }
 
     private double getEffectiveRecenterToleranceMm() {
@@ -387,6 +505,30 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         }
         return testLocation;
     }
+    @Override
+    public void postPick(Nozzle nozzle) throws Exception {
+        super.postPick(nozzle);
+
+        double componentRotation = normalizeComponentRotationInTray(getComponentRotationInTray());
+        if (componentRotation == 0) {
+            return;
+        }
+
+        Location current = nozzle.getLocation();
+        double currentR = current.getRotation();
+        if (Double.isNaN(currentR) || Double.isInfinite(currentR)) {
+            currentR = 0;
+        }
+        Location target = current.derive(null, null, null,
+                calculatePostPickRotation(currentR, componentRotation));
+
+        Logger.debug("{}.postPick(): rotating nozzle after pick by componentRotationInTray {} from {} to {}",
+                getName(), componentRotation, currentR, target.getRotation());
+
+        MovableUtils.moveToLocationAtSafeZ(nozzle, target);
+        nozzle.waitForCompletion(CompletionType.WaitForStillstand);
+    }
+
     /**
      * Returns if the feeder can take back a part.
      * Makes the assumption, that after each feed a pick followed,
@@ -424,6 +566,34 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         }
         // change FeedCount
         setFeedCount(getFeedCount() - 1);
+    }
+
+    private void migrateGridVectorsIfNeeded() {
+        if (!isZeroVector(columnVector) || !isZeroVector(rowVector) || !isZeroVector(gridOrigin)) {
+            return;
+        }
+        LengthUnit units = location.getUnits() == null ? LengthUnit.Millimeters : location.getUnits();
+        gridOrigin = location.derive(null, null, 0.0, 0.0).convertToUnits(units);
+        Location oldOffsets = offsets == null ? new Location(units) : offsets.convertToUnits(units);
+        Location oldColumnVector = new Location(units, oldOffsets.getX(), 0, 0, 0).rotateXy(location.getRotation());
+        Location oldRowVector = new Location(units, 0, -oldOffsets.getY(), 0, 0).rotateXy(location.getRotation());
+        columnVector = oldColumnVector;
+        rowVector = oldRowVector;
+        // Legacy tray definitions used the first-row/first-column pocket as the
+        // physical grid origin, so migrate them to a top-left start corner even
+        // though brand-new JEDEC feeders default to bottom-left rastering.
+        startCorner = StartCorner.TOP_LEFT;
+        if (legacyPickingInProgress && trayCountCols >= trayCountRows) {
+            firstRasterDirection = FirstRasterDirection.COLUMN;
+        }
+    }
+
+    private static boolean isZeroVector(Location vector) {
+        if (vector == null) {
+            return true;
+        }
+        Location mm = vector.convertToUnits(LengthUnit.Millimeters);
+        return Math.abs(mm.getX()) < 0.000001 && Math.abs(mm.getY()) < 0.000001;
     }
 
     public int getTrayCountCols() {
@@ -549,24 +719,80 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         firePropertyChange("recenterMaxPasses", oldValue, this.recenterMaxPasses);
     }
 
-    public boolean isUseDetectedAngleForPickRotation() {
-        return useDetectedAngleForPickRotation;
-    }
-
-    public void setUseDetectedAngleForPickRotation(boolean useDetectedAngleForPickRotation) {
-        boolean oldValue = this.useDetectedAngleForPickRotation;
-        this.useDetectedAngleForPickRotation = useDetectedAngleForPickRotation;
-        firePropertyChange("useDetectedAngleForPickRotation", oldValue, useDetectedAngleForPickRotation);
-    }
-
     public double getComponentRotationInTray() {
         return componentRotationInTray;
     }
 
     public void setComponentRotationInTray(double componentRotationInTray) {
         double oldValue = this.componentRotationInTray;
-        this.componentRotationInTray = componentRotationInTray;
-        firePropertyChange("componentRotationInTray", oldValue, componentRotationInTray);
+        this.componentRotationInTray = normalizeComponentRotationInTray(componentRotationInTray);
+        firePropertyChange("componentRotationInTray", oldValue, this.componentRotationInTray);
+    }
+
+    public StartCorner getStartCorner() {
+        return startCorner == null ? StartCorner.BOTTOM_LEFT : startCorner;
+    }
+
+    public void setStartCorner(StartCorner startCorner) {
+        StartCorner oldValue = this.startCorner;
+        this.startCorner = startCorner == null ? StartCorner.BOTTOM_LEFT : startCorner;
+        firePropertyChange("startCorner", oldValue, this.startCorner);
+        firePropertyChange("secondRasterDirectionDescription", null, getSecondRasterDirectionDescription());
+    }
+
+    public FirstRasterDirection getFirstRasterDirection() {
+        return firstRasterDirection == null ? FirstRasterDirection.ROW : firstRasterDirection;
+    }
+
+    public void setFirstRasterDirection(FirstRasterDirection firstRasterDirection) {
+        FirstRasterDirection oldValue = this.firstRasterDirection;
+        this.firstRasterDirection = firstRasterDirection == null ? FirstRasterDirection.ROW : firstRasterDirection;
+        firePropertyChange("firstRasterDirection", oldValue, this.firstRasterDirection);
+        firePropertyChange("secondRasterDirectionDescription", null, getSecondRasterDirectionDescription());
+    }
+
+    public RasterPattern getRasterPattern() {
+        return rasterPattern == null ? RasterPattern.ZIG_ZAG : rasterPattern;
+    }
+
+    public void setRasterPattern(RasterPattern rasterPattern) {
+        RasterPattern oldValue = this.rasterPattern;
+        this.rasterPattern = rasterPattern == null ? RasterPattern.ZIG_ZAG : rasterPattern;
+        firePropertyChange("rasterPattern", oldValue, this.rasterPattern);
+    }
+
+    public Location getGridOrigin() {
+        return gridOrigin == null ? new Location(LengthUnit.Millimeters) : gridOrigin;
+    }
+
+    public void setGridOrigin(Location gridOrigin) {
+        Location oldValue = this.gridOrigin;
+        this.gridOrigin = gridOrigin == null ? new Location(LengthUnit.Millimeters) : gridOrigin;
+        firePropertyChange("gridOrigin", oldValue, this.gridOrigin);
+    }
+
+    public Location getColumnVector() {
+        return columnVector == null ? new Location(LengthUnit.Millimeters) : columnVector;
+    }
+
+    public void setColumnVector(Location columnVector) {
+        Location oldValue = this.columnVector;
+        this.columnVector = columnVector == null ? new Location(LengthUnit.Millimeters) : columnVector;
+        firePropertyChange("columnVector", oldValue, this.columnVector);
+    }
+
+    public Location getRowVector() {
+        return rowVector == null ? new Location(LengthUnit.Millimeters) : rowVector;
+    }
+
+    public void setRowVector(Location rowVector) {
+        Location oldValue = this.rowVector;
+        this.rowVector = rowVector == null ? new Location(LengthUnit.Millimeters) : rowVector;
+        firePropertyChange("rowVector", oldValue, this.rowVector);
+    }
+
+    public double getLastDetectedAngle() {
+        return lastDetectedAngle;
     }
 
     @Override
