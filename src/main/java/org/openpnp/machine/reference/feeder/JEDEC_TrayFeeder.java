@@ -8,6 +8,8 @@ import org.openpnp.gui.MainFrame;
 import org.openpnp.gui.support.PropertySheetWizardAdapter;
 import org.openpnp.gui.support.Wizard;
 import org.openpnp.machine.reference.ReferenceFeeder;
+import org.openpnp.machine.reference.ReferenceNozzle;
+import org.openpnp.machine.reference.ReferenceNozzleTip;
 import org.openpnp.machine.reference.feeder.wizards.AdvancedLoosePartFeederConfigurationWizard;
 import org.openpnp.machine.reference.feeder.wizards.JEDEC_TrayFeederConfigurationWizard;
 import org.openpnp.model.Configuration;
@@ -19,6 +21,7 @@ import org.openpnp.spi.Camera;
 import org.openpnp.spi.MotionPlanner.CompletionType;
 import org.openpnp.spi.Nozzle;
 import org.openpnp.spi.PropertySheetHolder;
+import org.openpnp.util.LogUtils;
 import org.openpnp.util.MovableUtils;
 import org.openpnp.util.OpenCvUtils;
 import org.openpnp.util.Utils2D;
@@ -46,6 +49,8 @@ import java.util.List;
 public class JEDEC_TrayFeeder extends ReferenceFeeder {
     public static final double DEFAULT_RECENTER_TOLERANCE_MM = 0.02;
     public static final int DEFAULT_RECENTER_MAX_PASSES = 3;
+    private static final double PICK_ROTATION_ZERO_GUARD_DEG = 0.001;
+    private static final double PICK_ROTATION_ZERO_DEADBAND_DEG = 0.0000001;
 
     /**
      * New -> From advancedLoosePartFeeder
@@ -351,15 +356,18 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
                 // so OpenPnP's normal rotation-mode and runout compensation path handles
                 // the pick move.
                 lastDetectedAngle = result.angle;
+                double trayVisionRotation = calculateTrayVisionPickRotation(getLocation().getRotation(), result.angle);
+                double componentRotation = normalizeComponentRotationInTray(getComponentRotationInTray());
                 double pickRotation = getPickRotation(startPoint, result.angle);
-                Logger.debug("{}.locateFeederPart(): nominal rotation {}, detected offset {}, pick rotation {}",
-                        getName(), startPoint.getRotation(), result.angle, pickRotation);
+                Location rawPartLocation = partLocation;
                 // Update the location with the configured pick Z and the full intended pick
                 // rotation. Do not add a manual post-pick rotation.
                 partLocation =
                         partLocation.derive(null, null,
                                 this.location.convertToUnits(partLocation.getUnits()).getZ(),
                                 pickRotation);
+                logPickRotationDiagnostics(nozzle, camera, startPoint, result.angle, trayVisionRotation,
+                        componentRotation, pickRotation, rawPartLocation, partLocation);
                 MainFrame.get().getCameraViews().getCameraView(camera)
                         .showFilteredImage(OpenCvUtils.toBufferedImage(pipeline.getWorkingImage()), 250);
 
@@ -401,7 +409,16 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         // The full intended pick orientation must be present in pickLocation.R so
         // OpenPnP's prepareForPickAndPlaceArticulation() and ReferenceNozzle.toHeadLocation()
         // apply rotation mode and runout compensation during the normal pick move.
-        return Utils2D.angleNorm(trayVisionRotation + componentRotation, 180);
+        double pickRotation = Utils2D.angleNorm(trayVisionRotation + componentRotation, 180);
+        if (componentRotation == 0 && Math.abs(pickRotation) < PICK_ROTATION_ZERO_DEADBAND_DEG) {
+            // On this JEDEC tray/nozzle combination the exact 0° pick orientation can trip a
+            // downstream identity/no-op edge case in rotation/runout compensation. Nudge only
+            // the exact-zero, component-0 case by an orientation-insignificant epsilon so the
+            // normal compensated pick path remains active. Nonzero component rotations are left
+            // behaviorally unchanged.
+            return PICK_ROTATION_ZERO_GUARD_DEG;
+        }
+        return pickRotation;
     }
 
     public static double calculateTrayVisionPickRotation(double trayRotation, double detectedAngle) {
@@ -412,6 +429,54 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         // Preserve the previous working sign convention from JEDEC_TrayFeeder:
         // old working behavior used -(result.angle + getLocation().getRotation()).
         return Utils2D.angleNorm(-(detectedAngle + trayRotation), 180);
+    }
+
+    private void logPickRotationDiagnostics(Nozzle nozzle, Camera camera, Location startPoint, double detectedAngle,
+            double trayVisionRotation, double componentRotation, double pickRotation, Location rawPartLocation,
+            Location finalPickLocation) {
+        if (!LogUtils.isDebugEnabled()) {
+            return;
+        }
+        Location nozzleLocation = null;
+        try {
+            nozzleLocation = nozzle.getLocation();
+        }
+        catch (Exception e) {
+            Logger.debug(e, "{}.locateFeederPart(): unable to read nozzle location for pick diagnostics", getName());
+        }
+        Logger.debug("{}.locateFeederPart(): trayRotation {}, startPointRotation {}, "
+                + "componentRotationInTray raw {}, normalized {}, detectedAngle {}, trayVisionRotation {}, "
+                + "finalPickRotation {}, cameraLocation {}, rawVisionPartLocation {}, finalPickLocation {}, "
+                + "nozzleLocation {}, nozzleRotation {}, nozzleRotationMode {}, nozzleRotationModeOffset {}",
+                getName(), getLocation().getRotation(), startPoint.getRotation(), getComponentRotationInTray(),
+                componentRotation, detectedAngle, trayVisionRotation, pickRotation, camera.getLocation(), rawPartLocation,
+                finalPickLocation, nozzleLocation, nozzleLocation == null ? null : nozzleLocation.getRotation(),
+                nozzle.getRotationMode(), nozzle.getRotationModeOffset());
+        logExpectedRunoutOffset(nozzle, pickRotation);
+    }
+
+    private void logExpectedRunoutOffset(Nozzle nozzle, double pickRotation) {
+        try {
+            if (!(nozzle instanceof ReferenceNozzle) || !(nozzle.getNozzleTip() instanceof ReferenceNozzleTip)) {
+                Logger.debug("{}.locateFeederPart(): nozzle {} / tip {} not ReferenceNozzle/ReferenceNozzleTip; "
+                        + "runout diagnostic unavailable", getName(), nozzle, nozzle.getNozzleTip());
+                return;
+            }
+            ReferenceNozzle referenceNozzle = (ReferenceNozzle) nozzle;
+            ReferenceNozzleTip referenceNozzleTip = (ReferenceNozzleTip) nozzle.getNozzleTip();
+            if (!referenceNozzleTip.getCalibration().isCalibrated(referenceNozzle)) {
+                Logger.debug("{}.locateFeederPart(): nozzle tip {} is not calibrated for nozzle {}; "
+                        + "runout diagnostic unavailable", getName(), referenceNozzleTip.getName(),
+                        referenceNozzle.getName());
+                return;
+            }
+            Location offset = referenceNozzleTip.getCalibration().getCalibratedOffset(referenceNozzle, pickRotation);
+            Logger.debug("{}.locateFeederPart(): expected calibrated nozzle-tip runout offset at pickRotation {} is {}",
+                    getName(), pickRotation, offset);
+        }
+        catch (Exception e) {
+            Logger.debug(e, "{}.locateFeederPart(): unable to calculate expected nozzle-tip runout offset", getName());
+        }
     }
 
     public static double normalizeComponentRotationInTray(double value) {

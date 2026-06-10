@@ -90,6 +90,17 @@ public class JEDEC_TrayFeederTest {
                 JEDEC_TrayFeeder.calculatePickRotation(trayRotation, detectedAngle, 180), 0.0001);
         assertEquals(Utils2D.angleNorm(base + 270, 180),
                 JEDEC_TrayFeeder.calculatePickRotation(trayRotation, detectedAngle, 270), 0.0001);
+        assertEquals(JEDEC_TrayFeeder.calculatePickRotation(trayRotation, detectedAngle, -90),
+                JEDEC_TrayFeeder.calculatePickRotation(trayRotation, detectedAngle, 270), 0.0001);
+    }
+
+    @Test
+    public void exactZeroPickRotationIsGuardedOnlyForZeroComponentRotation() {
+        assertEquals(0.001, JEDEC_TrayFeeder.calculatePickRotation(0, 0, 0), 0.0001);
+        assertEquals(90, JEDEC_TrayFeeder.calculatePickRotation(0, 0, 90), 0.0001);
+        assertEquals(180, JEDEC_TrayFeeder.calculatePickRotation(0, 0, 180), 0.0001);
+        assertEquals(-90, JEDEC_TrayFeeder.calculatePickRotation(0, 0, 270), 0.0001);
+        assertEquals(-0.001, JEDEC_TrayFeeder.calculatePickRotation(0, 0.001, 0), 0.0001);
     }
 
     @Test
