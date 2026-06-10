@@ -203,7 +203,20 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
      */
     private Location locateFeederPart(Nozzle nozzle, Location startPoint) throws Exception {
         Camera camera = nozzle.getHead().getDefaultCamera();
-        MovableUtils.moveToLocationAtSafeZ(camera, startPoint);
+
+        // startPoint contains the nominal pick rotation, e.g. componentRotationInTray.
+        // Do not use that rotation for the head-mounted top-camera vision move.
+        // The camera should image the tray pocket using its own normal viewing rotation;
+        // the final pick location will still receive the configured part pick rotation.
+        Location cameraLocation = camera.getLocation();
+        double cameraRotation = cameraLocation.getRotation();
+        if (Double.isNaN(cameraRotation)) {
+            cameraRotation = 0;
+        }
+
+        Location visionStartPoint = startPoint.derive(null, null, null, cameraRotation);
+
+        MovableUtils.moveToLocationAtSafeZ(camera, visionStartPoint);
         camera.waitForCompletion(CompletionType.WaitForStillstand);
 
         int maxPasses = getEffectiveRecenterMaxPasses();
@@ -240,8 +253,8 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
                 // tray pocket/component rotation for pick rotation by default, and only retain the
                 // detected-angle behavior when explicitly enabled for legacy setups.
                 double pickRotation = getPickRotation(startPoint, result.angle);
-                Logger.debug("{}.locateFeederPart(): detected angle {}, pick rotation {}",
-                        getName(), result.angle, pickRotation);
+                Logger.debug("{}.locateFeederPart(): vision start rotation {}, detected angle {}, pick rotation {}",
+                        getName(), cameraRotation, result.angle, pickRotation);
                 // Update the location with the correct Z, which is the configured Location's Z,
                 // and with the nominal pocket/component rotation unless legacy behavior is enabled.
                 partLocation =
@@ -251,7 +264,7 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
                 MainFrame.get().getCameraViews().getCameraView(camera)
                         .showFilteredImage(OpenCvUtils.toBufferedImage(pipeline.getWorkingImage()), 250);
 
-                Location guardedPartLocation = checkIfInInitialView(camera, startPoint, partLocation);
+                Location guardedPartLocation = checkIfInInitialView(camera, visionStartPoint, partLocation);
                 if (guardedPartLocation == null) {
                     return null;
                 }
