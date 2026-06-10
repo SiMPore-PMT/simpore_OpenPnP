@@ -347,15 +347,15 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
                 Location partLocation = getPixelLocation(camera, result.center.x, result.center.y);
                 // The top-camera RotatedRect angle is required for square die / square
                 // nozzle pick alignment and is always used for pick rotation. The configured
-                // componentRotationInTray is not included here; it is applied in postPick()
-                // after the die is held.
+                // componentRotationInTray is included in pickLocation.R, not applied later,
+                // so OpenPnP's normal rotation-mode and runout compensation path handles
+                // the pick move.
                 lastDetectedAngle = result.angle;
                 double pickRotation = getPickRotation(startPoint, result.angle);
                 Logger.debug("{}.locateFeederPart(): nominal rotation {}, detected offset {}, pick rotation {}",
                         getName(), startPoint.getRotation(), result.angle, pickRotation);
-                // Update the location with the configured pick Z and the detected-angle pick
-                // rotation, excluding componentRotationInTray to avoid runout-compensated XY
-                // shifts before pickup.
+                // Update the location with the configured pick Z and the full intended pick
+                // rotation. Do not add a manual post-pick rotation.
                 partLocation =
                         partLocation.derive(null, null,
                                 this.location.convertToUnits(partLocation.getUnits()).getZ(),
@@ -390,7 +390,18 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     }
 
     double getPickRotation(Location startPoint, double detectedAngle) {
-        return calculateTrayVisionPickRotation(getLocation().getRotation(), detectedAngle);
+        return calculatePickRotation(getLocation().getRotation(), detectedAngle, getComponentRotationInTray());
+    }
+
+    public static double calculatePickRotation(double trayRotation,
+            double detectedAngle, double componentRotationInTray) {
+        double trayVisionRotation = calculateTrayVisionPickRotation(trayRotation, detectedAngle);
+        double componentRotation = normalizeComponentRotationInTray(componentRotationInTray);
+
+        // The full intended pick orientation must be present in pickLocation.R so
+        // OpenPnP's prepareForPickAndPlaceArticulation() and ReferenceNozzle.toHeadLocation()
+        // apply rotation mode and runout compensation during the normal pick move.
+        return Utils2D.angleNorm(trayVisionRotation + componentRotation, 180);
     }
 
     public static double calculateTrayVisionPickRotation(double trayRotation, double detectedAngle) {
@@ -401,13 +412,6 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         // Preserve the previous working sign convention from JEDEC_TrayFeeder:
         // old working behavior used -(result.angle + getLocation().getRotation()).
         return Utils2D.angleNorm(-(detectedAngle + trayRotation), 180);
-    }
-
-    public static double calculatePostPickRotation(double currentRotation, double componentRotationInTray) {
-        if (Double.isNaN(currentRotation) || Double.isInfinite(currentRotation)) {
-            currentRotation = 0;
-        }
-        return Utils2D.angleNorm(currentRotation + normalizeComponentRotationInTray(componentRotationInTray), 180);
     }
 
     public static double normalizeComponentRotationInTray(double value) {
@@ -505,30 +509,6 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         }
         return testLocation;
     }
-    @Override
-    public void postPick(Nozzle nozzle) throws Exception {
-        super.postPick(nozzle);
-
-        double componentRotation = normalizeComponentRotationInTray(getComponentRotationInTray());
-        if (componentRotation == 0) {
-            return;
-        }
-
-        Location current = nozzle.getLocation();
-        double currentR = current.getRotation();
-        if (Double.isNaN(currentR) || Double.isInfinite(currentR)) {
-            currentR = 0;
-        }
-        Location target = current.derive(null, null, null,
-                calculatePostPickRotation(currentR, componentRotation));
-
-        Logger.debug("{}.postPick(): rotating nozzle after pick by componentRotationInTray {} from {} to {}",
-                getName(), componentRotation, currentR, target.getRotation());
-
-        MovableUtils.moveToLocationAtSafeZ(nozzle, target);
-        nozzle.waitForCompletion(CompletionType.WaitForStillstand);
-    }
-
     /**
      * Returns if the feeder can take back a part.
      * Makes the assumption, that after each feed a pick followed,
