@@ -19,22 +19,28 @@
 
 package org.openpnp.machine.reference.feeder.wizards;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
-import java.awt.FlowLayout;
+import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.Polygon;
+import java.awt.RenderingHints;
 import java.awt.event.ActionEvent;
-import java.io.IOException;
-import java.io.InputStream;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 
-import javax.imageio.ImageIO;
 import javax.swing.AbstractAction;
-import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.ButtonGroup;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JRadioButton;
 import javax.swing.JSeparator;
 import javax.swing.JTextField;
 import javax.swing.SwingConstants;
@@ -71,6 +77,9 @@ import org.openpnp.vision.pipeline.ui.CvPipelineEditorDialog;
 
 // *** Change this import/type to your actual backend class ***
 import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder;
+import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder.FirstRasterDirection;
+import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder.RasterPattern;
+import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder.StartCorner;
 
 import com.jgoodies.forms.layout.ColumnSpec;
 import com.jgoodies.forms.layout.FormLayout;
@@ -93,7 +102,6 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
 
     private JPanel panelLocation;
     private JPanel panelParameters;
-    private JPanel panelIllustration;
     private JLabel lblX_1;
     private JLabel lblY_1;
     private JLabel lblComponentCount;
@@ -107,7 +115,7 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
     private JTextField textFieldTrayCountCols;
     private JTextField textFieldTrayCountRows;
     private JTextField textFieldTrayRotation;
-    private JTextField textFieldComponentRotation;
+    private JComboBox<Double> comboBoxComponentRotation;
     private JTextField textFieldComponentZHeight;
 
     private JPanel panelPart;
@@ -121,6 +129,14 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
     private JCheckBox useAsyncGcodeMotion;
     private JTextField recenterToleranceMm;
     private JTextField recenterMaxPasses;
+    private TrayPreviewPanel trayPreviewPanel;
+    private JLabel secondRasterDirectionLabel;
+    private JRadioButton firstDirectionRow;
+    private JRadioButton firstDirectionColumn;
+    private JRadioButton patternZigZag;
+    private JRadioButton patternSnake;
+    private JCheckBox rotateNozzleAtPick;
+    private JCheckBox useDetectedAngleForPickRotation;
 
     private MutableLocationProxy firstRowFirstColumn = new MutableLocationProxy();
     private MutableLocationProxy firstRowLastColumn = new MutableLocationProxy();
@@ -301,11 +317,10 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
                 Translations.getString("ReferenceRotatedTrayFeederConfigurationWizard.ComponentRotation"));
         panelParameters.add(lblComponentRotation, "2, 6");
 
-        textFieldComponentRotation = new JTextField();
-        textFieldComponentRotation.setColumns(10);
-        textFieldComponentRotation.setToolTipText(
-                Translations.getString("ReferenceRotatedTrayFeederConfigurationWizard.ComponentRotation.ToolTip"));
-        panelParameters.add(textFieldComponentRotation, "4, 6");
+        comboBoxComponentRotation = new JComboBox<>(new Double[] { 0.0, 90.0, 180.0, 270.0 });
+        comboBoxComponentRotation.setToolTipText(
+                "Component orientation in the tray. This is not used for pick rotation unless advanced pick rotation is enabled.");
+        panelParameters.add(comboBoxComponentRotation, "4, 6");
 
         JLabel lblComponentZHeight = new JLabel(
                 Translations.getString("ReferenceRotatedTrayFeederConfigurationWizard.ZHeight"));
@@ -323,7 +338,7 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
             @Override
             public void actionPerformed(ActionEvent e) {
                 try {
-                    offsetsAndRotation.setLocation(calculateOffsetsAndRotation());
+                    applyTrayGridDefinition();
                 } catch (Exception e1) {
                     MessageBoxes.errorBox(getTopLevelAncestor(),
                             Translations.getString("ReferenceRotatedTrayFeederConfigurationWizard.Error"),
@@ -365,27 +380,50 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         locationButtonsPanel = new LocationButtonsPanel(textFieldLocationX, textFieldLocationY, null, textFieldTrayRotation);
         panelLocation.add(locationButtonsPanel, "8, 4");
 
-        // ---------------- Illustration (optional) ----------------
-        JPanel panelIllustration = new JPanel();
-        panelIllustration.setBorder(new TitledBorder(null,
-                Translations.getString("ReferenceRotatedTrayFeederConfigurationWizard.TrayIllustration"),
+        // ---------------- Raster selection and preview ----------------
+        JPanel rasterPanel = new JPanel();
+        rasterPanel.setBorder(new TitledBorder(null, "JEDEC Tray Raster Preview",
                 TitledBorder.LEADING, TitledBorder.TOP, null));
-        contentPanel.add(panelIllustration);
-        try (InputStream stream = getClass().getResourceAsStream("/illustrations/rotatedtrayfeeder.png")) {
-            if (stream != null) {
-                ImageIcon icon = new ImageIcon(ImageIO.read(stream));
-                JLabel illustrationLabel = new JLabel();
-                illustrationLabel.setIcon(icon);
-                panelIllustration.add(illustrationLabel);
-            }
-        } catch (IOException ioe) {
-            // ignore
-        }
+        rasterPanel.setLayout(new FormLayout(new ColumnSpec[] {
+                FormSpecs.RELATED_GAP_COLSPEC, FormSpecs.DEFAULT_COLSPEC, FormSpecs.RELATED_GAP_COLSPEC,
+                FormSpecs.DEFAULT_COLSPEC, FormSpecs.RELATED_GAP_COLSPEC, FormSpecs.DEFAULT_COLSPEC,
+                FormSpecs.RELATED_GAP_COLSPEC, ColumnSpec.decode("default:grow"), },
+                new RowSpec[] { FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC,
+                        FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC, RowSpec.decode("160dlu"), }));
+        contentPanel.add(rasterPanel);
+
+        firstDirectionRow = new JRadioButton("ROW");
+        firstDirectionColumn = new JRadioButton("COLUMN");
+        ButtonGroup firstDirectionGroup = new ButtonGroup();
+        firstDirectionGroup.add(firstDirectionRow);
+        firstDirectionGroup.add(firstDirectionColumn);
+        rasterPanel.add(new JLabel("First raster direction"), "2, 2");
+        rasterPanel.add(firstDirectionRow, "4, 2");
+        rasterPanel.add(firstDirectionColumn, "6, 2");
+
+        patternZigZag = new JRadioButton("ZIG_ZAG");
+        patternSnake = new JRadioButton("SNAKE");
+        ButtonGroup patternGroup = new ButtonGroup();
+        patternGroup.add(patternZigZag);
+        patternGroup.add(patternSnake);
+        rasterPanel.add(new JLabel("Raster pattern"), "2, 4");
+        rasterPanel.add(patternZigZag, "4, 4");
+        rasterPanel.add(patternSnake, "6, 4");
+
+        secondRasterDirectionLabel = new JLabel();
+        rasterPanel.add(secondRasterDirectionLabel, "8, 2");
+
+        trayPreviewPanel = new TrayPreviewPanel();
+        rasterPanel.add(trayPreviewPanel, "2, 6, 7, 1, fill, fill");
+
+        firstDirectionRow.addActionListener(e -> updateRasterFromControls());
+        firstDirectionColumn.addActionListener(e -> updateRasterFromControls());
+        patternZigZag.addActionListener(e -> updateRasterFromControls());
+        patternSnake.addActionListener(e -> updateRasterFromControls());
 
         // ---------------- Vision panel (from AdvancedLoosePart wizard) ----------------
         // Warning banner
         JPanel warningPanel = new JPanel();
-        FlowLayout flowLayout = (FlowLayout) warningPanel.getLayout();
         contentPanel.add(warningPanel, 0);
         JLabel lblWarning = new JLabel(
                 "Warning: This feeder is incomplete and experimental. Use at your own risk.");
@@ -404,7 +442,8 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
                 new RowSpec[] { FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC,
                         FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC,
                         FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC,
-                        FormSpecs.DEFAULT_ROWSPEC, }));
+                        FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC,
+                        FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, }));
 
         JLabel lblFiducialVisionSettings = new JLabel("Top Vision Alignment Model");
         visionPanel.add(lblFiducialVisionSettings, "2, 2");
@@ -448,6 +487,12 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         recenterMaxPasses = new JTextField();
         recenterMaxPasses.setColumns(10);
         visionPanel.add(recenterMaxPasses, "4, 10");
+
+        rotateNozzleAtPick = new JCheckBox("Rotate nozzle at pick (advanced; can shift XY with runout compensation)");
+        visionPanel.add(rotateNozzleAtPick, "2, 12, 5, 1");
+
+        useDetectedAngleForPickRotation = new JCheckBox("Use detected angle for pick rotation (legacy/debug; can shift XY)");
+        visionPanel.add(useDetectedAngleForPickRotation, "2, 14, 5, 1");
     }
 
     // ---------- Bindings ----------
@@ -484,6 +529,8 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         addWrappedBinding(feeder, "useAsyncGcodeMotion", useAsyncGcodeMotion, "selected");
         addWrappedBinding(feeder, "recenterToleranceMm", recenterToleranceMm, "text", doubleConverter);
         addWrappedBinding(feeder, "recenterMaxPasses", recenterMaxPasses, "text", intConverter);
+        addWrappedBinding(feeder, "rotateNozzleAtPick", rotateNozzleAtPick, "selected");
+        addWrappedBinding(feeder, "useDetectedAngleForPickRotation", useDetectedAngleForPickRotation, "selected");
         addWrappedBinding(feeder, "fiducialVisionSettingsId", fiducialVisionSettingsCombo, "selectedItem",
                 new Converter<String, AbstractVisionSettings>() {
                     @Override
@@ -511,7 +558,7 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         addWrappedBinding(location, "rotation", textFieldTrayRotation, "text", doubleConverter);
         addWrappedBinding(location, "lengthZ", textFieldComponentZHeight, "text", lengthConverter);
 
-        addWrappedBinding(feeder, "componentRotationInTray", textFieldComponentRotation, "text", doubleConverter);
+        addWrappedBinding(feeder, "componentRotationInTray", comboBoxComponentRotation, "selectedItem");
 
         MutableLocationProxy firstRowLastComponentlocation = new MutableLocationProxy();
         bind(UpdateStrategy.READ_WRITE, feeder, "firstRowLastComponentLocation", firstRowLastComponentlocation, "location");
@@ -551,7 +598,6 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         // decorators
         ComponentDecorators.decorateWithAutoSelectAndLengthConversion(textFieldLocationX);
         ComponentDecorators.decorateWithAutoSelectAndLengthConversion(textFieldLocationY);
-        ComponentDecorators.decorateWithAutoSelectAndLengthConversion(textFieldComponentRotation);
         ComponentDecorators.decorateWithAutoSelectAndLengthConversion(textFieldComponentZHeight);
         ComponentDecorators.decorateWithAutoSelectAndLengthConversion(textFieldFirstRowLastLocationX);
         ComponentDecorators.decorateWithAutoSelectAndLengthConversion(textFieldFirstRowLastLocationY);
@@ -567,6 +613,7 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         ComponentDecorators.decorateWithAutoSelect(textFieldTrayCountRows);
         ComponentDecorators.decorateWithAutoSelect(textFieldTrayCountCols);
         ComponentDecorators.decorateWithAutoSelect(textFieldFeedCount);
+        initializeRasterControls();
     }
 
     // ---------- Properties for bindings ----------
@@ -579,6 +626,87 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         int old = this.wizardFeedCount;
         this.wizardFeedCount = wizardFeedCount;
         firePropertyChange("wizardFeedCount", old, wizardFeedCount);
+    }
+
+    private void initializeRasterControls() {
+        firstDirectionRow.setSelected(feeder.getFirstRasterDirection() == FirstRasterDirection.ROW);
+        firstDirectionColumn.setSelected(feeder.getFirstRasterDirection() == FirstRasterDirection.COLUMN);
+        patternZigZag.setSelected(feeder.getRasterPattern() == RasterPattern.ZIG_ZAG);
+        patternSnake.setSelected(feeder.getRasterPattern() == RasterPattern.SNAKE);
+        updatePreviewFromFeeder();
+    }
+
+    private void updateRasterFromControls() {
+        feeder.setFirstRasterDirection(firstDirectionColumn.isSelected() ? FirstRasterDirection.COLUMN : FirstRasterDirection.ROW);
+        feeder.setRasterPattern(patternSnake.isSelected() ? RasterPattern.SNAKE : RasterPattern.ZIG_ZAG);
+        updatePreviewFromFeeder();
+    }
+
+    private void updatePreviewFromFeeder() {
+        if (trayPreviewPanel == null) {
+            return;
+        }
+        trayPreviewPanel.setRows(feeder.getEffectiveTrayCountRows());
+        trayPreviewPanel.setCols(feeder.getEffectiveTrayCountCols());
+        trayPreviewPanel.setStartCorner(feeder.getStartCorner());
+        trayPreviewPanel.setFirstRasterDirection(feeder.getFirstRasterDirection());
+        trayPreviewPanel.setRasterPattern(feeder.getRasterPattern());
+        trayPreviewPanel.setApplied(!isZero(feeder.getColumnVector()) || !isZero(feeder.getRowVector()));
+        secondRasterDirectionLabel.setText("Second raster direction: " + feeder.getSecondRasterDirectionDescription());
+    }
+
+    private boolean isZero(Location location) {
+        Location mm = location.convertToUnits(LengthUnit.Millimeters);
+        return Math.abs(mm.getX()) < 0.000001 && Math.abs(mm.getY()) < 0.000001;
+    }
+
+    private void applyTrayGridDefinition() throws Exception {
+        TrayGridDefinition definition = calculateTrayGridDefinition();
+        offsetsAndRotation.setLocation(definition.offsetsAndRotation);
+        feeder.setGridOrigin(definition.gridOrigin);
+        feeder.setColumnVector(definition.columnVector);
+        feeder.setRowVector(definition.rowVector);
+        feeder.setOffsets(definition.legacyOffsets);
+        feeder.setLocation(feeder.getLocation().derive(
+                definition.gridOrigin.getX(), definition.gridOrigin.getY(), null, definition.offsetsAndRotation.getRotation()));
+        feeder.setFirstRowLastComponentLocation(firstRowLastColumn.getLocation());
+        feeder.setLastComponentLocation(lastRowLastColumn.getLocation());
+        updatePreviewFromFeeder();
+    }
+
+    private TrayGridDefinition calculateTrayGridDefinition() throws Exception {
+        Location offsetsAndRotationLocation = calculateOffsetsAndRotation();
+        LengthUnit units = Configuration.get().getSystemUnits();
+        Location a = firstRowFirstColumn.getLocation().convertToUnits(units);
+        Location b = firstRowLastColumn.getLocation().convertToUnits(units);
+        Location c = lastRowLastColumn.getLocation().convertToUnits(units);
+        Location columnVector = nCols > 1
+                ? new Location(units, (b.getX() - a.getX()) / (nCols - 1), (b.getY() - a.getY()) / (nCols - 1), 0, 0)
+                : new Location(units);
+        Location rowVector = nRows > 1
+                ? new Location(units, (c.getX() - b.getX()) / (nRows - 1), (c.getY() - b.getY()) / (nRows - 1), 0, 0)
+                : new Location(units);
+        Location legacyOffsets = new Location(units, columnVector.getLinearDistanceTo(new Location(units)),
+                rowVector.getLinearDistanceTo(new Location(units)), 0, 0);
+        return new TrayGridDefinition(a.derive(null, null, 0.0, 0.0), columnVector, rowVector, legacyOffsets,
+                offsetsAndRotationLocation);
+    }
+
+    private static class TrayGridDefinition {
+        final Location gridOrigin;
+        final Location columnVector;
+        final Location rowVector;
+        final Location legacyOffsets;
+        final Location offsetsAndRotation;
+
+        TrayGridDefinition(Location gridOrigin, Location columnVector, Location rowVector, Location legacyOffsets,
+                Location offsetsAndRotation) {
+            this.gridOrigin = gridOrigin;
+            this.columnVector = columnVector;
+            this.rowVector = rowVector;
+            this.legacyOffsets = legacyOffsets;
+            this.offsetsAndRotation = offsetsAndRotation;
+        }
     }
 
     // ---------- Geometry calc (copied from rotated tray wizard) ----------
@@ -696,6 +824,176 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
             return (FiducialVisionSettings) selected;
         }
         return feeder.getFiducialVisionSettings();
+    }
+
+
+    private class TrayPreviewPanel extends JPanel {
+        private int rows = 1;
+        private int cols = 1;
+        private StartCorner startCorner = StartCorner.BOTTOM_LEFT;
+        private FirstRasterDirection firstRasterDirection = FirstRasterDirection.ROW;
+        private RasterPattern rasterPattern = RasterPattern.ZIG_ZAG;
+        private boolean applied;
+
+        TrayPreviewPanel() {
+            setPreferredSize(new Dimension(420, 260));
+            setBackground(Color.WHITE);
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    StartCorner corner = cornerAt(e.getPoint());
+                    if (corner != null) {
+                        feeder.setStartCorner(corner);
+                        updatePreviewFromFeeder();
+                    }
+                }
+            });
+        }
+
+        void setRows(int rows) {
+            this.rows = Math.max(rows, 1);
+            repaint();
+        }
+
+        void setCols(int cols) {
+            this.cols = Math.max(cols, 1);
+            repaint();
+        }
+
+        void setStartCorner(StartCorner startCorner) {
+            this.startCorner = startCorner;
+            repaint();
+        }
+
+        void setFirstRasterDirection(FirstRasterDirection firstRasterDirection) {
+            this.firstRasterDirection = firstRasterDirection;
+            repaint();
+        }
+
+        void setRasterPattern(RasterPattern rasterPattern) {
+            this.rasterPattern = rasterPattern;
+            repaint();
+        }
+
+        void setApplied(boolean applied) {
+            this.applied = applied;
+            repaint();
+        }
+
+        private StartCorner cornerAt(Point point) {
+            int[] grid = getGridBounds();
+            int x = grid[0], y = grid[1], cell = grid[2];
+            if (cell <= 0 || point.x < x || point.y < y || point.x >= x + cols * cell || point.y >= y + rows * cell) {
+                return null;
+            }
+            int col = (point.x - x) / cell;
+            int row = (point.y - y) / cell;
+            if (row == 0 && col == 0) {
+                return StartCorner.TOP_LEFT;
+            }
+            if (row == 0 && col == cols - 1) {
+                return StartCorner.TOP_RIGHT;
+            }
+            if (row == rows - 1 && col == 0) {
+                return StartCorner.BOTTOM_LEFT;
+            }
+            if (row == rows - 1 && col == cols - 1) {
+                return StartCorner.BOTTOM_RIGHT;
+            }
+            return null;
+        }
+
+        private int[] getGridBounds() {
+            int margin = 24;
+            int cell = Math.max(2, Math.min((getWidth() - margin * 2) / cols, (getHeight() - margin * 2) / rows));
+            int width = cell * cols;
+            int height = cell * rows;
+            return new int[] { (getWidth() - width) / 2, (getHeight() - height) / 2, cell };
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int[] grid = getGridBounds();
+            int x0 = grid[0], y0 = grid[1], cell = grid[2];
+            int selectedRow = startCorner == StartCorner.TOP_LEFT || startCorner == StartCorner.TOP_RIGHT ? 0 : rows - 1;
+            int selectedCol = startCorner == StartCorner.TOP_LEFT || startCorner == StartCorner.BOTTOM_LEFT ? 0 : cols - 1;
+            for (int row = 0; row < rows; row++) {
+                for (int col = 0; col < cols; col++) {
+                    if ((firstRasterDirection == FirstRasterDirection.ROW && row == selectedRow)
+                            || (firstRasterDirection == FirstRasterDirection.COLUMN && col == selectedCol)) {
+                        g2.setColor(new Color(255, 245, 150));
+                        g2.fillRect(x0 + col * cell, y0 + row * cell, cell, cell);
+                    }
+                    if (row == selectedRow && col == selectedCol) {
+                        g2.setColor(new Color(80, 200, 120));
+                        g2.fillRect(x0 + col * cell, y0 + row * cell, cell, cell);
+                    }
+                    g2.setColor(Color.GRAY);
+                    g2.drawRect(x0 + col * cell, y0 + row * cell, cell, cell);
+                }
+            }
+            drawSecondDirectionArrow(g2, x0, y0, cell);
+            drawRasterArrows(g2, x0, y0, cell);
+            if (!applied) {
+                g2.setColor(Color.DARK_GRAY);
+                g2.drawString("Apply A/B/C grid definition to store grid vectors", 8, 16);
+            }
+            g2.dispose();
+        }
+
+        private void drawSecondDirectionArrow(Graphics2D g2, int x0, int y0, int cell) {
+            int cx = x0 + cols * cell / 2;
+            int cy = y0 + rows * cell / 2;
+            int len = Math.max(18, Math.min(cols * cell, rows * cell) / 4);
+            String direction = JEDEC_TrayFeeder.getSecondRasterDirectionDescription(startCorner, firstRasterDirection);
+            int dx = 0, dy = 0;
+            if ("UP".equals(direction)) {
+                dy = -len;
+            }
+            else if ("DOWN".equals(direction)) {
+                dy = len;
+            }
+            else if ("LEFT".equals(direction)) {
+                dx = -len;
+            }
+            else {
+                dx = len;
+            }
+            g2.setColor(new Color(40, 90, 220, 180));
+            g2.setStroke(new BasicStroke(3f));
+            drawArrow(g2, cx - dx / 2, cy - dy / 2, cx + dx / 2, cy + dy / 2);
+        }
+
+        private void drawRasterArrows(Graphics2D g2, int x0, int y0, int cell) {
+            g2.setColor(new Color(20, 20, 20, 150));
+            g2.setStroke(new BasicStroke(1.2f));
+            int capacity = rows * cols;
+            int step = Math.max(1, capacity / 60);
+            JEDEC_TrayFeeder.GridIndex previous = null;
+            for (int i = 0; i < capacity; i += step) {
+                JEDEC_TrayFeeder.GridIndex current = JEDEC_TrayFeeder.getGridIndexForFeed(i, rows, cols,
+                        startCorner, firstRasterDirection, rasterPattern);
+                if (previous != null) {
+                    drawArrow(g2, x0 + previous.col * cell + cell / 2, y0 + previous.row * cell + cell / 2,
+                            x0 + current.col * cell + cell / 2, y0 + current.row * cell + cell / 2);
+                }
+                previous = current;
+            }
+        }
+
+        private void drawArrow(Graphics2D g2, int x1, int y1, int x2, int y2) {
+            g2.drawLine(x1, y1, x2, y2);
+            double angle = Math.atan2(y2 - y1, x2 - x1);
+            int size = 6;
+            Polygon head = new Polygon();
+            head.addPoint(x2, y2);
+            head.addPoint((int) (x2 - size * Math.cos(angle - Math.PI / 6)), (int) (y2 - size * Math.sin(angle - Math.PI / 6)));
+            head.addPoint((int) (x2 - size * Math.cos(angle + Math.PI / 6)), (int) (y2 - size * Math.sin(angle + Math.PI / 6)));
+            g2.fillPolygon(head);
+        }
     }
 
 }
