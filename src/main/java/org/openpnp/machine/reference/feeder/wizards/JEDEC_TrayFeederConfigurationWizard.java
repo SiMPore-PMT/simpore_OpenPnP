@@ -837,7 +837,7 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
 
         TrayPreviewPanel() {
             setPreferredSize(new Dimension(420, 260));
-            setBackground(Color.WHITE);
+            setOpaque(false);
             addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseClicked(MouseEvent e) {
@@ -963,8 +963,8 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
                 dx = len;
             }
             g2.setColor(new Color(40, 90, 220, 180));
-            g2.setStroke(new BasicStroke(3f));
-            drawArrow(g2, cx - dx / 2, cy - dy / 2, cx + dx / 2, cy + dy / 2);
+            g2.setStroke(new BasicStroke(5f));
+            drawArrow(g2, cx - dx / 2, cy - dy / 2, cx + dx / 2, cy + dy / 2, 10);
         }
 
         private void drawRasterArrows(Graphics2D g2, int x0, int y0, int cell) {
@@ -985,9 +985,12 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         }
 
         private void drawArrow(Graphics2D g2, int x1, int y1, int x2, int y2) {
+            drawArrow(g2, x1, y1, x2, y2, 6);
+        }
+
+        private void drawArrow(Graphics2D g2, int x1, int y1, int x2, int y2, int size) {
             g2.drawLine(x1, y1, x2, y2);
             double angle = Math.atan2(y2 - y1, x2 - x1);
-            int size = 6;
             Polygon head = new Polygon();
             head.addPoint(x2, y2);
             head.addPoint((int) (x2 - size * Math.cos(angle - Math.PI / 6)), (int) (y2 - size * Math.sin(angle - Math.PI / 6)));
