@@ -248,15 +248,17 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
                 });
                 RotatedRect result = results.get(0);
                 Location partLocation = getPixelLocation(camera, result.center.x, result.center.y);
-                // The pipeline's RotatedRect angle is useful for debugging, but OpenCV wraps and
-                // ambiguously reports it for square or near-square die. Use the configured nominal
-                // tray pocket/component rotation for pick rotation by default, and only retain the
-                // detected-angle behavior when explicitly enabled for legacy setups.
+                // The configured pocket/component rotation is the nominal orientation.
+                // The pipeline RotatedRect angle is used only as a small in-pocket angular
+                // correction relative to that nominal orientation. Do not use the old absolute
+                // formula -(detectedAngle + feederRotation) unless legacy behavior is explicitly
+                // enabled.
                 double pickRotation = getPickRotation(startPoint, result.angle);
-                Logger.debug("{}.locateFeederPart(): vision start rotation {}, detected angle {}, pick rotation {}",
-                        getName(), cameraRotation, result.angle, pickRotation);
+                Logger.debug("{}.locateFeederPart(): nominal rotation {}, detected offset {}, pick rotation {}",
+                        getName(), startPoint.getRotation(), result.angle, pickRotation);
                 // Update the location with the correct Z, which is the configured Location's Z,
-                // and with the nominal pocket/component rotation unless legacy behavior is enabled.
+                // and with the configured plus detected-offset pick rotation unless legacy
+                // behavior is enabled.
                 partLocation =
                         partLocation.derive(null, null,
                                 this.location.convertToUnits(partLocation.getUnits()).getZ(),
@@ -298,9 +300,14 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     static double calculatePickRotation(boolean useDetectedAngleForPickRotation,
             double feederRotation, double nominalPocketRotation, double detectedAngle) {
         if (useDetectedAngleForPickRotation) {
+            // Legacy absolute-angle behavior. Disabled by default.
             return -(detectedAngle + feederRotation);
         }
-        return nominalPocketRotation;
+
+        // Default behavior:
+        // nominalPocketRotation is the configured tray/component orientation.
+        // detectedAngle is the small in-pocket angular error measured by feeder vision.
+        return nominalPocketRotation + detectedAngle;
     }
 
     private double getEffectiveRecenterToleranceMm() {
