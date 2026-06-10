@@ -67,6 +67,9 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     @Attribute(required = false)
     private int recenterMaxPasses = DEFAULT_RECENTER_MAX_PASSES;
 
+    @Attribute(required = false)
+    private boolean useDetectedAngleForPickRotation = false;
+
     private Location pickLocation;
     private Location lastLocation;
     @Override
@@ -200,7 +203,20 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
      */
     private Location locateFeederPart(Nozzle nozzle, Location startPoint) throws Exception {
         Camera camera = nozzle.getHead().getDefaultCamera();
-        MovableUtils.moveToLocationAtSafeZ(camera, startPoint);
+
+        // startPoint contains the nominal pick rotation, e.g. componentRotationInTray.
+        // Do not use that rotation for the head-mounted top-camera vision move.
+        // The camera should image the tray pocket using its own normal viewing rotation;
+        // the final pick location will still receive the configured part pick rotation.
+        Location cameraLocation = camera.getLocation();
+        double cameraRotation = cameraLocation.getRotation();
+        if (Double.isNaN(cameraRotation)) {
+            cameraRotation = 0;
+        }
+
+        Location visionStartPoint = startPoint.derive(null, null, null, cameraRotation);
+
+        MovableUtils.moveToLocationAtSafeZ(camera, visionStartPoint);
         camera.waitForCompletion(CompletionType.WaitForStillstand);
 
         int maxPasses = getEffectiveRecenterMaxPasses();
@@ -232,18 +248,25 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
                 });
                 RotatedRect result = results.get(0);
                 Location partLocation = getPixelLocation(camera, result.center.x, result.center.y);
-                // Get the result's Location
-                // Update the location with the result's rotation
-                partLocation = partLocation.derive(null, null, null, -(result.angle + getLocation().getRotation()));
-                // Update the location with the correct Z, which is the configured Location's Z.
+                // The configured pocket/component rotation is the nominal orientation.
+                // The pipeline RotatedRect angle is used only as a small in-pocket angular
+                // correction relative to that nominal orientation. Do not use the old absolute
+                // formula -(detectedAngle + feederRotation) unless legacy behavior is explicitly
+                // enabled.
+                double pickRotation = getPickRotation(startPoint, result.angle);
+                Logger.debug("{}.locateFeederPart(): nominal rotation {}, detected offset {}, pick rotation {}",
+                        getName(), startPoint.getRotation(), result.angle, pickRotation);
+                // Update the location with the correct Z, which is the configured Location's Z,
+                // and with the configured plus detected-offset pick rotation unless legacy
+                // behavior is enabled.
                 partLocation =
                         partLocation.derive(null, null,
                                 this.location.convertToUnits(partLocation.getUnits()).getZ(),
-                                null);
+                                pickRotation);
                 MainFrame.get().getCameraViews().getCameraView(camera)
                         .showFilteredImage(OpenCvUtils.toBufferedImage(pipeline.getWorkingImage()), 250);
 
-                Location guardedPartLocation = checkIfInInitialView(camera, startPoint, partLocation);
+                Location guardedPartLocation = checkIfInInitialView(camera, visionStartPoint, partLocation);
                 if (guardedPartLocation == null) {
                     return null;
                 }
@@ -267,6 +290,24 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
             }
         }
         return null;
+    }
+
+    double getPickRotation(Location startPoint, double detectedAngle) {
+        return calculatePickRotation(isUseDetectedAngleForPickRotation(),
+                getLocation().getRotation(), startPoint.getRotation(), detectedAngle);
+    }
+
+    static double calculatePickRotation(boolean useDetectedAngleForPickRotation,
+            double feederRotation, double nominalPocketRotation, double detectedAngle) {
+        if (useDetectedAngleForPickRotation) {
+            // Legacy absolute-angle behavior. Disabled by default.
+            return -(detectedAngle + feederRotation);
+        }
+
+        // Default behavior:
+        // nominalPocketRotation is the configured tray/component orientation.
+        // detectedAngle is the small in-pocket angular error measured by feeder vision.
+        return nominalPocketRotation + detectedAngle;
     }
 
     private double getEffectiveRecenterToleranceMm() {
@@ -506,6 +547,16 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         int oldValue = this.recenterMaxPasses;
         this.recenterMaxPasses = Math.max(recenterMaxPasses, 1);
         firePropertyChange("recenterMaxPasses", oldValue, this.recenterMaxPasses);
+    }
+
+    public boolean isUseDetectedAngleForPickRotation() {
+        return useDetectedAngleForPickRotation;
+    }
+
+    public void setUseDetectedAngleForPickRotation(boolean useDetectedAngleForPickRotation) {
+        boolean oldValue = this.useDetectedAngleForPickRotation;
+        this.useDetectedAngleForPickRotation = useDetectedAngleForPickRotation;
+        firePropertyChange("useDetectedAngleForPickRotation", oldValue, useDetectedAngleForPickRotation);
     }
 
     public double getComponentRotationInTray() {
