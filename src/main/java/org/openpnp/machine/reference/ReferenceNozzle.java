@@ -19,7 +19,6 @@ import org.openpnp.machine.reference.ReferenceNozzleTip.VacuumMeasurementMethod;
 import org.openpnp.machine.reference.axis.ReferenceControllerAxis;
 import org.openpnp.machine.reference.camera.ReferenceCamera;
 import org.openpnp.machine.reference.solutions.ActuatorSolutions;
-import org.openpnp.machine.reference.wizards.ReferenceNozzleCameraOffsetCalibrationWizard;
 import org.openpnp.machine.reference.wizards.ReferenceNozzleCameraOffsetWizard;
 import org.openpnp.machine.reference.wizards.ReferenceNozzleCompatibleNozzleTipsWizard;
 import org.openpnp.machine.reference.wizards.ReferenceNozzleConfigurationWizard;
@@ -118,9 +117,6 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
     @Attribute(required = false)
     private boolean limitRotation = true;
 
-    @Element(required = false)
-    private ReferenceNozzleCameraOffsetCalibration cameraOffsetCalibration = new ReferenceNozzleCameraOffsetCalibration();
-
     private Actuator vacuumSenseActuator;
     private Actuator vacuumActuator;
     private Actuator blowOffActuator;
@@ -204,17 +200,6 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
     @Deprecated
     public boolean isLimitRotation() {
         return limitRotation;
-    }
-
-    public ReferenceNozzleCameraOffsetCalibration getCameraOffsetCalibration() {
-        if (cameraOffsetCalibration == null) {
-            cameraOffsetCalibration = new ReferenceNozzleCameraOffsetCalibration();
-        }
-        return cameraOffsetCalibration;
-    }
-
-    public void setCameraOffsetCalibration(ReferenceNozzleCameraOffsetCalibration cameraOffsetCalibration) {
-        this.cameraOffsetCalibration = cameraOffsetCalibration;
     }
 
     public boolean isEnableDynamicSafeZ() {
@@ -580,10 +565,6 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
         return safeZ;
     }
 
-    public CameraOffsetCalibrationResult calibrateCameraOffset(boolean apply) throws Exception {
-        return getCameraOffsetCalibration().calibrate(this, apply);
-    }
-
     @Override
     public void home() throws Exception {
         Logger.debug("{}.home()", getName());
@@ -614,23 +595,6 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
                         calibrationNozzleTip.getCalibration().reset(this);
                     }
                 }
-            }
-                }
-
-        ReferenceNozzleCameraOffsetCalibration cameraOffsetCalibration = getCameraOffsetCalibration();
-        if (cameraOffsetCalibration.isEnabled()
-                && cameraOffsetCalibration.getRecalibrationTrigger() == ReferenceNozzleCameraOffsetCalibration.RecalibrationTrigger.MachineHome) {
-            try {
-                calibrateCameraOffset(true);
-            }
-            catch (Exception e) {
-                if (cameraOffsetCalibration.isFailHoming()) {
-                    throw e;
-                }
-                Logger.warn(e, "{}.home() camera offset calibration failed but failHoming is disabled", getName());
-                UiUtils.messageBoxOnExceptionLater(() -> {
-                    throw e;
-                });
             }
         }
     }
@@ -928,8 +892,6 @@ public class ReferenceNozzle extends AbstractNozzle implements HeadMountable {
                         Translations.getString("ReferenceNozzle.PropertySheetHolder.ToolChanger.title")), //$NON-NLS-1$
                 new PropertySheetWizardAdapter(new ReferenceNozzleCameraOffsetWizard(this),
                         Translations.getString("ReferenceNozzle.PropertySheetHolder.OffsetWizard.title")), //$NON-NLS-1$
-                new PropertySheetWizardAdapter(new ReferenceNozzleCameraOffsetCalibrationWizard(this),
-                        "Precision Offset Calibration (Pipeline-Driven)"),
         };
     }
 
