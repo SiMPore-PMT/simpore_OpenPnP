@@ -1,0 +1,87 @@
+<openpnp-job version="2.0">
+   <root-panel version="2.0">
+      <dimensions units="Millimeters" x="0.0" y="0.0" z="0.0" rotation="0.0"/>
+      <placements/>
+      <children>
+         <object class="org.openpnp.model.PanelLocation" side="Top" id="Pnl1" file-name="/home/engineering-simpore/OpenPnP/panels/uPlastics_6-6_tray_1.xml.panel.xml" check-fiducials="false" locally-enabled="true">
+            <location units="Millimeters" x="127.8910664371782" y="17.936904154837077" z="4.2" rotation="0.0"/>
+         </object>
+      </children>
+      <pseudo-placement-ids/>
+   </root-panel>
+   <placed-status-map class="java.util.HashMap">
+      <entry>
+         <string>Pnl1⇒Brd1[1,2]⇒Disk</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[1,1]⇒Disk</string>
+         <boolean>false</boolean>
+      </entry>
+   </placed-status-map>
+   <enabled-state-map class="java.util.HashMap">
+      <entry>
+         <string>Pnl1⇒Brd1[3,5]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[4,3]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[5,2]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[3,4]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[4,4]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[5,3]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[3,3]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[4,1]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[3,2]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[4,2]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[5,1]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[3,1]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[4,5]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[5,4]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Pnl1⇒Brd1[5,5]</string>
+         <boolean>false</boolean>
+      </entry>
+   </enabled-state-map>
+   <check-fiducials-state-map class="java.util.HashMap"/>
+   <error-handling-state-map class="java.util.HashMap"/>
+   <error-handling>Alert</error-handling>
+</openpnp-job>
