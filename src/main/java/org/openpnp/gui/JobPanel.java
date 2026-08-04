@@ -168,6 +168,8 @@ public class JobPanel extends JPanel {
     private JobProcessor jobProcessor;
     
     private volatile State state = State.Stopped;
+    private final Object scriptPauseLock = new Object();
+    private volatile boolean scriptPauseActive;
     
     public JobPanel(Configuration configuration, MainFrame frame) {
         this.configuration = configuration;
@@ -512,11 +514,45 @@ public class JobPanel extends JPanel {
     
     void setState(State newState) {
         this.state = newState;
+        synchronized (scriptPauseLock) {
+            scriptPauseLock.notifyAll();
+        }
         updateJobActions();
     }
     
     public String getJobState() {
         return state.name();
+    }
+
+    public boolean isPauseRequested() {
+        return state == State.Pausing;
+    }
+
+    public String pauseIfRequested() throws InterruptedException {
+        if (state != State.Pausing) {
+            return state.name();
+        }
+
+        synchronized (scriptPauseLock) {
+            if (state == State.Pausing) {
+                scriptPauseActive = true;
+                setState(State.Paused);
+                try {
+                    while (state == State.Paused) {
+                        scriptPauseLock.wait();
+                    }
+                }
+                catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+                finally {
+                    scriptPauseActive = false;
+                    scriptPauseLock.notifyAll();
+                }
+            }
+            return state.name();
+        }
     }
 
     public JTable getPlacementsHolderLocationsTable() {
@@ -1077,8 +1113,11 @@ public class JobPanel extends JPanel {
     // resume a job that's currently in state Paused - used to continue after a manual nozzle tip change from within the JobProcessor
     public void jobResume() {
         if (state == State.Paused) {
+            boolean resumeScriptPause = scriptPauseActive;
             setState(State.Running);
-            jobRun();
+            if (!resumeScriptPause) {
+                jobRun();
+            }
         } else {
             Logger.debug("Can't resume, job not in Paused state.");
         }
@@ -1099,8 +1138,11 @@ public class JobPanel extends JPanel {
                     jobStart();
                 }
                 else if (state == State.Paused) {
+                    boolean resumeScriptPause = scriptPauseActive;
                     setState(State.Running);
-                    jobRun();
+                    if (!resumeScriptPause) {
+                        jobRun();
+                    }
                 }
                 // If we're running and the user hits pause we pause.
                 else if (state == State.Running) {

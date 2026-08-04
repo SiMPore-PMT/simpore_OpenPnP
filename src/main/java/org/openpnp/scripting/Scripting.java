@@ -187,6 +187,22 @@ public class Scripting {
                 }
                 return mainFrame.getJobTab().getJobState();
             }
+
+            public boolean isPauseRequested() {
+                MainFrame mainFrame = MainFrame.get();
+                if (mainFrame == null || mainFrame.getJobTab() == null) {
+                    return false;
+                }
+                return mainFrame.getJobTab().isPauseRequested();
+            }
+
+            public String pauseIfRequested() throws InterruptedException {
+                MainFrame mainFrame = MainFrame.get();
+                if (mainFrame == null || mainFrame.getJobTab() == null) {
+                    return "Stopped";
+                }
+                return mainFrame.getJobTab().pauseIfRequested();
+            }
         });
         bindings.put("scripting", this);
         bindings.put(ScriptEngine.FILENAME, script.getName());
