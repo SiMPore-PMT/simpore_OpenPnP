@@ -179,6 +179,15 @@ public class Scripting {
         bindings.put("machine", Configuration.get()
                                              .getMachine());
         bindings.put("gui", MainFrame.get());
+        bindings.put("jobState", new Object() {
+            public String get() {
+                MainFrame mainFrame = MainFrame.get();
+                if (mainFrame == null || mainFrame.getJobTab() == null) {
+                    return "Stopped";
+                }
+                return mainFrame.getJobTab().getJobState();
+            }
+        });
         bindings.put("scripting", this);
         bindings.put(ScriptEngine.FILENAME, script.getName());
         if (additionalGlobals != null) {

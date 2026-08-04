@@ -167,7 +167,7 @@ public class JobPanel extends JPanel {
 
     private JobProcessor jobProcessor;
     
-    private State state = State.Stopped;
+    private volatile State state = State.Stopped;
     
     public JobPanel(Configuration configuration, MainFrame frame) {
         this.configuration = configuration;
@@ -515,6 +515,10 @@ public class JobPanel extends JPanel {
         updateJobActions();
     }
     
+    public String getJobState() {
+        return state.name();
+    }
+
     public JTable getPlacementsHolderLocationsTable() {
         return jobTable;
     }
