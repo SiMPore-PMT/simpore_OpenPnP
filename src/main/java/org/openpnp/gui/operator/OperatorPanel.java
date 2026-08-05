@@ -148,9 +148,9 @@ public class OperatorPanel extends JPanel {
         modifyLastRunButton.addActionListener(e -> showJobEditor());
         resetBoardsOnlyButton.addActionListener(e -> resetBoardsOnly());
         globalDispenseToggle.addActionListener(e -> setGlobalDispenseEnabled(globalDispenseToggle.isSelected()));
-        editToggle.addActionListener(e -> updateEditMode());
-        boardModeToggle.addActionListener(e -> updateEditMode());
-        placementModeToggle.addActionListener(e -> updateEditMode());
+        editToggle.addActionListener(e -> updateButtons());
+        boardModeToggle.addActionListener(e -> updateButtons());
+        placementModeToggle.addActionListener(e -> updateButtons());
         placementFilter.addActionListener(e -> updateButtons());
         dispenseFilter.addActionListener(e -> updateButtons());
         fiducialFilter.addActionListener(e -> updateButtons());
@@ -339,7 +339,7 @@ public class OperatorPanel extends JPanel {
         if (state == JobPanel.State.Running || state == JobPanel.State.Pausing || state == JobPanel.State.Paused) {
             return false;
         }
-        return state == JobPanel.State.Stopped || "Stopped".equals(jobPanel.getJobState());
+        return true;
     }
 
     private String machineNotReadyReason() {
@@ -362,7 +362,7 @@ public class OperatorPanel extends JPanel {
     private void updateButtons() {
         String state = jobPanel.getJobState();
         boolean ready = machineReady();
-        boolean hasJob = jobPanel.getJob() != null && jobPanel.getJob().getFile() != null;
+        boolean hasJob = jobPanel.getJob() != null;
         boolean stopped = "Stopped".equals(state);
         boolean running = "Running".equals(state) || "Pausing".equals(state);
         boolean paused = "Paused".equals(state);
@@ -370,7 +370,8 @@ public class OperatorPanel extends JPanel {
         String notReadyReason = machineNotReadyReason();
         boolean editingAllowed = isEditingAllowed();
 
-        jobLabel.setText(hasJob ? jobPanel.getJob().getFile().getName() : "No job loaded");
+        File jobFile = hasJob ? jobPanel.getJob().getFile() : null;
+        jobLabel.setText(!hasJob ? "No job loaded" : jobFile == null ? "Unsaved job" : jobFile.getName());
         updateStatusLabel(state, ready, hasJob, notReadyReason);
         guidanceLabel.setText(createGuidanceText(hasJob, ready, state, notReadyReason));
 

@@ -12,6 +12,7 @@ import java.awt.Toolkit;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -29,6 +30,7 @@ import org.openpnp.model.PlacementsHolderLocation;
 import org.openpnp.spi.Feeder;
 import org.openpnp.spi.HeadMountable;
 import org.openpnp.spi.Nozzle;
+import org.openpnp.util.Utils2D;
 
 @SuppressWarnings("serial")
 public class OperatorRuntimeCanvas extends JPanel {
@@ -63,6 +65,7 @@ public class OperatorRuntimeCanvas extends JPanel {
     private static final int TOOL_HEIGHT = 96;
     private static final int BOARD_WIDTH = 108;
     private static final int BOARD_HEIGHT = 76;
+    private static final int BOARD_GAP = 10;
 
     private Job job;
     private HeadMountable selectedTool;
@@ -288,7 +291,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         int cols = tray.getEffectiveTrayCountCols();
         int feedCount = tray.getFeedCount();
         int capacity = rows * cols;
-        int nextIndex = Math.max(0, Math.min(feedCount, capacity - 1));
+        int nextIndex = feedCount >= 0 && feedCount < capacity ? feedCount : -1;
         int cell = Math.max(14, Math.min(24, 240 / Math.max(rows, cols)));
         int gridWidth = cols * cell;
         int gridHeight = rows * cell;
@@ -300,7 +303,8 @@ public class OperatorRuntimeCanvas extends JPanel {
         g2.setColor(enabled ? BORDER : new Color(190, 110, 60));
         g2.drawRoundRect(x - 6, y - 4, cardWidth, cardHeight, 12, 12);
         g2.setColor(enabled ? TEXT : new Color(245, 150, 100));
-        String status = enabled ? "Next pick: " + (nextIndex + 1) + " • Remaining " + Math.max(0, capacity - feedCount) : "Disabled";
+        String status = enabled ? "Next pick: " + (nextIndex < 0 ? "-" : nextIndex + 1)
+                + " • Remaining " + Math.max(0, capacity - feedCount) : "Disabled";
         g2.drawString(tray.getName(), x, y + 12);
         g2.setColor(enabled ? MUTED_TEXT : new Color(245, 150, 100));
         g2.drawString(status, x, y + 28);
@@ -319,10 +323,6 @@ public class OperatorRuntimeCanvas extends JPanel {
                 g2.drawRoundRect(px - 2, py - 2, cell + 2, cell + 2, 6, 6);
                 g2.setStroke(new BasicStroke(1.5f));
             }
-            String pocket = Integer.toString(index + 1);
-            g2.setColor(TEXT);
-            int sw = g2.getFontMetrics().stringWidth(pocket);
-            g2.drawString(pocket, px + Math.max(1, (cell - sw) / 2 - 1), py + Math.max(10, cell / 2 + 4));
             trayPocketHits.add(new TrayPocketHit(tray, index, index + 1,
                     new Rectangle(px, py, cell - 2, cell - 2)));
         }
@@ -381,17 +381,10 @@ public class OperatorRuntimeCanvas extends JPanel {
             g2.drawString("No job loaded", getWidth() / 2 - 42, getHeight() / 3 + 38);
             return;
         }
-        List<Location> locations = new ArrayList<>();
-        for (PlacementsHolderLocation<?> boardLocation : job.getBoardLocations()) {
-            locations.add(boardLocation.getGlobalLocation());
-            for (Placement placement : boardLocation.getPlacementsHolder().getPlacements()) {
-                locations.add(boardLocation.getGlobalLocation().add(placement.getLocation()));
-            }
-        }
-        if (locations.isEmpty()) {
+        List<? extends PlacementsHolderLocation<?>> boards = job.getBoardLocations();
+        if (boards.isEmpty()) {
             return;
         }
-        Bounds bounds = new Bounds(locations);
         int trayColumnWidth = Math.min(300, Math.max(230, getWidth() / 3));
         Rectangle area = new Rectangle(trayColumnWidth + 16, TOOL_HEIGHT, getWidth() - trayColumnWidth - 34,
                 getHeight() - TOOL_HEIGHT - 22);
@@ -401,15 +394,15 @@ public class OperatorRuntimeCanvas extends JPanel {
         g2.drawRoundRect(area.x, area.y, area.width, area.height, 14, 14);
         g2.setColor(TEXT);
         g2.drawString("Job Layout", area.x + 12, area.y + 18);
-        for (PlacementsHolderLocation<?> boardLocation : job.getBoardLocations()) {
-            drawBoard(g2, bounds, area, boardLocation);
+        Bounds bounds = new Bounds(boards, area);
+        for (PlacementsHolderLocation<?> boardLocation : boards) {
+            drawBoard(g2, bounds, boardLocation);
         }
     }
 
-    private void drawBoard(Graphics2D g2, Bounds bounds, Rectangle area, PlacementsHolderLocation<?> boardLocation) {
-        Location bl = boardLocation.getGlobalLocation();
-        int bx = bounds.x(bl, area);
-        int by = bounds.y(bl, area);
+    private void drawBoard(Graphics2D g2, Bounds bounds, PlacementsHolderLocation<?> boardLocation) {
+        int bx = bounds.x(boardLocation);
+        int by = bounds.y(boardLocation);
         Rectangle boardBounds = new Rectangle(bx - BOARD_WIDTH / 2, by - BOARD_HEIGHT / 2, BOARD_WIDTH, BOARD_HEIGHT);
         boolean enabled = boardLocation.isEnabled();
         boolean selected = selectedBoards.contains(boardLocation);
@@ -428,18 +421,30 @@ public class OperatorRuntimeCanvas extends JPanel {
             return;
         }
         for (Placement placement : boardLocation.getPlacementsHolder().getPlacements()) {
-            drawPlacement(g2, bounds, area, boardLocation, placement, enabled);
+            drawPlacement(g2, boardBounds, boardLocation, placement, enabled);
         }
     }
 
-    private void drawPlacement(Graphics2D g2, Bounds bounds, Rectangle area, PlacementsHolderLocation<?> boardLocation,
+    private void drawPlacement(Graphics2D g2, Rectangle boardBounds, PlacementsHolderLocation<?> boardLocation,
             Placement placement, boolean boardEnabled) {
         if (!boardEnabled || !placement.isEnabled()) {
             return;
         }
-        Location p = boardLocation.getGlobalLocation().add(placement.getLocation());
-        int x = bounds.x(p, area);
-        int y = bounds.y(p, area);
+        Location origin = Utils2D.calculateBoardPlacementLocation(boardLocation);
+        Location p = Utils2D.calculateBoardPlacementLocation(boardLocation, placement.getLocation())
+                .convertToUnits(origin.getUnits());
+        Location dimensions = boardLocation.getPlacementsHolder().getDimensions().convertToUnits(origin.getUnits());
+        double width = Math.max(1, Math.abs(dimensions.getX()));
+        double height = Math.max(1, Math.abs(dimensions.getY()));
+        double angle = Math.toRadians(origin.getRotation());
+        double globalX = p.getX() - origin.getX();
+        double globalY = p.getY() - origin.getY();
+        double localX = globalX * Math.cos(angle) + globalY * Math.sin(angle);
+        double localY = -globalX * Math.sin(angle) + globalY * Math.cos(angle);
+        int x = boardBounds.x + (int) Math.round(localX / width * BOARD_WIDTH);
+        int y = boardBounds.y + BOARD_HEIGHT - (int) Math.round(localY / height * BOARD_HEIGHT);
+        x = Math.max(boardBounds.x + 13, Math.min(boardBounds.x + boardBounds.width - 13, x));
+        y = Math.max(boardBounds.y + 13, Math.min(boardBounds.y + boardBounds.height - 13, y));
         boolean placed = job.retrievePlacedStatus(boardLocation, placement.getId());
         Color color = placed ? PLACED : (placement.getType() == Placement.Type.Fiducial ? FIDUCIAL
                 : placement.getType() == Placement.Type.Dispense ? DISPENSE : PLACEMENT);
@@ -603,24 +608,51 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     private static class Bounds {
-        double minX, maxX, minY, maxY;
-        Bounds(List<Location> locations) {
-            minX = maxX = locations.get(0).getX();
-            minY = maxY = locations.get(0).getY();
-            for (Location l : locations) {
-                minX = Math.min(minX, l.getX());
-                maxX = Math.max(maxX, l.getX());
-                minY = Math.min(minY, l.getY());
-                maxY = Math.max(maxY, l.getY());
+        private final List<Double> columns = new ArrayList<>();
+        private final List<Double> rows = new ArrayList<>();
+        private final int left;
+        private final int top;
+
+        Bounds(List<? extends PlacementsHolderLocation<?>> boards, Rectangle area) {
+            for (PlacementsHolderLocation<?> board : boards) {
+                Location location = board.getGlobalLocation();
+                columns.add(location.getX());
+                rows.add(location.getY());
+            }
+            columns.sort(Comparator.naturalOrder());
+            rows.sort(Comparator.reverseOrder());
+            removeDuplicates(columns);
+            removeDuplicates(rows);
+            int width = BOARD_WIDTH + (columns.size() - 1) * (BOARD_WIDTH + BOARD_GAP);
+            int height = BOARD_HEIGHT + (rows.size() - 1) * (BOARD_HEIGHT + BOARD_GAP);
+            left = area.x + (area.width - width) / 2 + BOARD_WIDTH / 2;
+            top = area.y + (area.height - height) / 2 + BOARD_HEIGHT / 2;
+        }
+
+        int x(PlacementsHolderLocation<?> board) {
+            return left + nearest(columns, board.getGlobalLocation().getX()) * (BOARD_WIDTH + BOARD_GAP);
+        }
+
+        int y(PlacementsHolderLocation<?> board) {
+            return top + nearest(rows, board.getGlobalLocation().getY()) * (BOARD_HEIGHT + BOARD_GAP);
+        }
+
+        private static void removeDuplicates(List<Double> values) {
+            for (int i = values.size() - 1; i > 0; i--) {
+                if (Math.abs(values.get(i) - values.get(i - 1)) < 0.001) {
+                    values.remove(i);
+                }
             }
         }
-        int x(Location l, Rectangle r) {
-            return r.x + 24 + (int) ((l.getX() - minX) / Math.max(1, maxX - minX) * (r.width - 48) * 0.42
-                    + (r.width - 48) * 0.29);
-        }
-        int y(Location l, Rectangle r) {
-            return r.y + r.height - 24 - (int) ((l.getY() - minY) / Math.max(1, maxY - minY) * (r.height - 48) * 0.68
-                    + (r.height - 48) * 0.16);
+
+        private static int nearest(List<Double> values, double value) {
+            int nearest = 0;
+            for (int i = 1; i < values.size(); i++) {
+                if (Math.abs(values.get(i) - value) < Math.abs(values.get(nearest) - value)) {
+                    nearest = i;
+                }
+            }
+            return nearest;
         }
     }
 }
