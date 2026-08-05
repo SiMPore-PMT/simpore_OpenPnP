@@ -11,8 +11,8 @@ import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.util.EnumMap;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -378,9 +378,12 @@ public class OperatorRuntimeCanvas extends JPanel {
         if (showPanelSelector) {
             drawPanelSelector(g2, area, slots);
         }
+        Rectangle contentArea = showPanelSelector
+                ? new Rectangle(area.x, area.y + 96, area.width, Math.max(1, area.height - 96))
+                : area;
         List<PlacementsHolderLocation<?>> drawnBoards = new ArrayList<>();
         for (PlacementsHolderLocation<?> boardLocation : visibleBoards) {
-            if (drawBoard(g2, bounds, area, boardLocation)) {
+            if (drawBoard(g2, bounds, contentArea, boardLocation)) {
                 drawnBoards.add(boardLocation);
             }
         }
