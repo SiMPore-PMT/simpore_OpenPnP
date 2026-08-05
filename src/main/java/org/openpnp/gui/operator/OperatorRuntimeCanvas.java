@@ -188,6 +188,7 @@ public class OperatorRuntimeCanvas extends JPanel {
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             g2.setStroke(new BasicStroke(1.5f));
             drawTool(g2);
+            drawLegend(g2);
             drawJob(g2);
             drawFeeders(g2);
             drawDragSelection(g2);
@@ -207,26 +208,37 @@ public class OperatorRuntimeCanvas extends JPanel {
             text = type + ": " + name;
         }
         g2.setColor(SECTION);
-        g2.fillRoundRect(10, 8, Math.min(getWidth() - 20, 360), 64, 10, 10);
+        g2.fillRoundRect(10, 8, Math.min(getWidth() - 20, 280), 26, 10, 10);
         g2.setColor(BORDER);
-        g2.drawRoundRect(10, 8, Math.min(getWidth() - 20, 360), 64, 10, 10);
+        g2.drawRoundRect(10, 8, Math.min(getWidth() - 20, 280), 26, 10, 10);
         g2.setColor(TEXT);
         g2.drawString(text, 22, 26);
-        int lx = 22;
-        int ly = 44;
-        drawLegendItem(g2, lx, ly, PLACEMENT, "Placement / pick");
-        drawLegendItem(g2, lx + 122, ly, FIDUCIAL, "Fiducial");
-        drawLegendItem(g2, lx + 198, ly, DISPENSE, "Dispense");
-        drawLegendItem(g2, lx, ly + 18, PLACED, "Placed = gold");
-        g2.setColor(MUTED_TEXT);
-        g2.drawString("Disabled = hidden", lx + 122, ly + 22);
     }
 
-    private void drawLegendItem(Graphics2D g2, int x, int y, Color color, String label) {
+    private void drawLegend(Graphics2D g2) {
+        int legendX = 10;
+        int legendY = 42;
+        int legendWidth = Math.min(getWidth() - 20, 520);
+        g2.setColor(SECTION);
+        g2.fillRoundRect(legendX, legendY, legendWidth, 30, 10, 10);
+        g2.setColor(BORDER);
+        g2.drawRoundRect(legendX, legendY, legendWidth, 30, 10, 10);
+        int lx = 22;
+        int ly = 61;
+        lx = drawLegendItem(g2, lx, ly, PLACEMENT, "Placement") + 18;
+        lx = drawLegendItem(g2, lx, ly, FIDUCIAL, "Fiducial") + 18;
+        lx = drawLegendItem(g2, lx, ly, DISPENSE, "Dispense") + 18;
+        lx = drawLegendItem(g2, lx, ly, PLACED, "Placed") + 18;
+        g2.setColor(MUTED_TEXT);
+        g2.drawString("Disabled = hidden", lx, ly);
+    }
+
+    private int drawLegendItem(Graphics2D g2, int x, int y, Color color, String label) {
         g2.setColor(color);
         g2.fillOval(x, y - 8, 10, 10);
         g2.setColor(MUTED_TEXT);
         g2.drawString(label, x + 14, y);
+        return x + 14 + g2.getFontMetrics().stringWidth(label);
     }
 
     private void drawFeeders(Graphics2D g2) {
@@ -262,7 +274,7 @@ public class OperatorRuntimeCanvas extends JPanel {
 
     private int getJedecTrayHeight(JEDEC_TrayFeeder tray) {
         int cell = Math.max(14, Math.min(24, 240 / Math.max(tray.getEffectiveTrayCountRows(), tray.getEffectiveTrayCountCols())));
-        return tray.getEffectiveTrayCountRows() * cell + 104;
+        return tray.getEffectiveTrayCountRows() * cell + 124;
     }
 
     private int getReferenceTrayHeight(ReferenceTrayFeeder tray) {
@@ -280,7 +292,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         int gridWidth = cols * cell;
         int gridHeight = rows * cell;
         int cardWidth = Math.max(gridWidth + 20, 244);
-        int cardHeight = gridHeight + 104;
+        int cardHeight = gridHeight + 124;
         boolean enabled = tray.isEnabled();
         g2.setColor(enabled ? SECTION : new Color(90, 72, 56, 80));
         g2.fillRoundRect(x - 6, y - 4, cardWidth, cardHeight, 12, 12);
@@ -309,9 +321,9 @@ public class OperatorRuntimeCanvas extends JPanel {
             trayPocketHits.add(new TrayPocketHit(tray, index, index + 1,
                     new Rectangle(px, py, cell - 2, cell - 2)));
         }
-        int controlsY = y + 42 + gridHeight;
-        Rectangle reset = new Rectangle(x, controlsY + 14, 28, 28);
-        Rectangle enable = new Rectangle(x + 96, controlsY + 18, 92, 20);
+        int controlsY = y + 36 + gridHeight + 18;
+        Rectangle reset = new Rectangle(x, controlsY, 30, 30);
+        Rectangle enable = new Rectangle(x, controlsY + 42, 120, 20);
         drawResetControl(g2, reset, enabled);
         drawEnableToggle(g2, enable, enabled);
         trayActionHits.add(new TrayActionHit(tray, reset, true));
@@ -429,17 +441,17 @@ public class OperatorRuntimeCanvas extends JPanel {
                 : placement.getType() == Placement.Type.Dispense ? DISPENSE : PLACEMENT);
         g2.setColor(color);
         if (placement.getType() == Placement.Type.Fiducial) {
-            g2.fillOval(x - 8, y - 8, 16, 16);
+            g2.fillOval(x - 10, y - 10, 21, 21);
         }
         else if (placement.getType() == Placement.Type.Dispense) {
-            g2.setStroke(new BasicStroke(2.2f));
-            g2.drawOval(x - 10, y - 10, 20, 20);
+            g2.setStroke(new BasicStroke(2.8f));
+            g2.drawOval(x - 13, y - 13, 26, 26);
             g2.setStroke(new BasicStroke(1.5f));
         }
         else if (placement.getType() == Placement.Type.Placement) {
-            g2.setStroke(new BasicStroke(2.4f));
-            g2.drawLine(x - 10, y - 10, x + 10, y + 10);
-            g2.drawLine(x + 10, y - 10, x - 10, y + 10);
+            g2.setStroke(new BasicStroke(3.0f));
+            g2.drawLine(x - 13, y - 13, x + 13, y + 13);
+            g2.drawLine(x + 13, y - 13, x - 13, y + 13);
             g2.setStroke(new BasicStroke(1.5f));
         }
     }
@@ -599,12 +611,12 @@ public class OperatorRuntimeCanvas extends JPanel {
             }
         }
         int x(Location l, Rectangle r) {
-            return r.x + 24 + (int) ((l.getX() - minX) / Math.max(1, maxX - minX) * (r.width - 48) * 0.72
-                    + (r.width - 48) * 0.14);
+            return r.x + 24 + (int) ((l.getX() - minX) / Math.max(1, maxX - minX) * (r.width - 48) * 0.52
+                    + (r.width - 48) * 0.24);
         }
         int y(Location l, Rectangle r) {
-            return r.y + r.height - 24 - (int) ((l.getY() - minY) / Math.max(1, maxY - minY) * (r.height - 48) * 0.72
-                    + (r.height - 48) * 0.14);
+            return r.y + r.height - 24 - (int) ((l.getY() - minY) / Math.max(1, maxY - minY) * (r.height - 48) * 0.82
+                    + (r.height - 48) * 0.09);
         }
     }
 }

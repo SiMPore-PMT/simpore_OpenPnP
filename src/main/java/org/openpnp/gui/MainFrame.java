@@ -291,7 +291,7 @@ public class MainFrame extends JFrame {
             splitPaneMachineAndTabs.setRightComponent(getOperatorTabs());
         }
         else {
-            ensureAdminLogTab();
+            ensureAdminTabs();
             splitPaneMachineAndTabs.setRightComponent(tabs);
             updateMenuState(tabs.getSelectedComponent());
         }
@@ -315,7 +315,13 @@ public class MainFrame extends JFrame {
         return operatorTabs;
     }
 
-    private void ensureAdminLogTab() {
+    private void ensureAdminTabs() {
+        if (jobPanel != null && tabs.indexOfComponent(jobPanel) < 0) {
+            if (jobPanel.getParent() != null) {
+                jobPanel.getParent().remove(jobPanel);
+            }
+            tabs.insertTab(Translations.getString("MainFrame.RightComponent.tabs.Job"), null, jobPanel, null, 0);
+        }
         if (logPanel != null && tabs.indexOfComponent(logPanel) < 0) {
             if (logPanel.getParent() != null) {
                 logPanel.getParent().remove(logPanel);
