@@ -3,6 +3,7 @@ package org.openpnp.gui.operator;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Dimension;
 import java.awt.FileDialog;
 import java.awt.Font;
 import java.awt.Frame;
@@ -32,6 +33,7 @@ import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JSplitPane;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
@@ -109,6 +111,7 @@ public class OperatorPanel extends JPanel {
     private final JPanel jobControlsPanel = new JPanel(new BorderLayout(6, 0));
     private final JPanel postRunPanel = new JPanel(new GridBagLayout());
     private final JPanel editOptionsPanel = new JPanel(new GridBagLayout());
+    private JPanel detailsPanel;
     private final DefaultTableModel placementDetailsModel = new DefaultTableModel(
             new Object[] { "Id", "Type", "Part", "Side", "Enabled", "Placed", "Status" }, 0) {
         @Override
@@ -121,6 +124,7 @@ public class OperatorPanel extends JPanel {
         }
     };
     private final JTable placementDetailsTable = new JTable(placementDetailsModel);
+    private final JScrollPane placementDetailsScrollPane = new JScrollPane(placementDetailsTable);
     private final List<RowPlacement> rowPlacements = new ArrayList<>();
     private final Set<PlacementsHolderLocation<?>> selectedBoards = new LinkedHashSet<>();
     private final List<AbstractModelObject> feederListeners = new ArrayList<>();
@@ -136,8 +140,7 @@ public class OperatorPanel extends JPanel {
         setBorder(new CompoundBorder(new TitledBorder("Runtime"), new EmptyBorder(8, 8, 8, 8)));
         setBackground(UIManager.getColor("Panel.background"));
         add(createTopCommandPanel(), BorderLayout.NORTH);
-        add(createRuntimePanel(), BorderLayout.CENTER);
-        add(createBottomPanel(), BorderLayout.SOUTH);
+        add(createRuntimeSplitPanel(), BorderLayout.CENTER);
 
         startNewJobButton.addActionListener(e -> openJob(true));
         openNewJobButton.addActionListener(e -> openJob(true));
@@ -208,33 +211,45 @@ public class OperatorPanel extends JPanel {
     private JPanel createRuntimePanel() {
         JPanel runtime = new JPanel(new BorderLayout(8, 8));
         runtime.setBorder(new EmptyBorder(6, 0, 6, 0));
-        guidanceLabel.setBorder(new EmptyBorder(4, 4, 4, 4));
-        runtime.add(guidanceLabel, BorderLayout.NORTH);
         runtime.add(canvas, BorderLayout.CENTER);
         return runtime;
     }
 
     private JPanel createTopCommandPanel() {
-        JPanel panel = new JPanel(new BorderLayout(8, 0));
-        JToolBar jobToolBar = new JToolBar();
-        jobToolBar.setFloatable(false);
-        jobToolBar.add(startNewJobButton);
-        jobToolBar.addSeparator();
-        jobToolBar.add(startButton);
-        jobToolBar.add(pauseResumeButton);
-        jobToolBar.add(stopButton);
-        jobControlsPanel.add(jobToolBar, BorderLayout.CENTER);
-        JPanel left = new JPanel(new BorderLayout(4, 4));
-        left.add(jobControlsPanel, BorderLayout.NORTH);
-        left.add(createEditingToolbar(), BorderLayout.CENTER);
-        panel.add(left, BorderLayout.CENTER);
-        panel.add(createPostRunPanel(), BorderLayout.EAST);
+        JPanel panel = new JPanel(new BorderLayout(4, 4));
+        JToolBar primaryToolBar = new JToolBar();
+        primaryToolBar.setFloatable(false);
+        primaryToolBar.add(startNewJobButton);
+        primaryToolBar.addSeparator();
+        primaryToolBar.add(startButton);
+        primaryToolBar.add(pauseResumeButton);
+        primaryToolBar.add(stopButton);
+        JToolBar secondaryToolBar = new JToolBar();
+        secondaryToolBar.setFloatable(false);
+        secondaryToolBar.add(resetBoardButton);
+        secondaryToolBar.add(modifyLastRunButton);
+        secondaryToolBar.add(openNewJobButton);
+        jobControlsPanel.add(primaryToolBar, BorderLayout.WEST);
+        jobControlsPanel.add(secondaryToolBar, BorderLayout.EAST);
+        panel.add(jobControlsPanel, BorderLayout.NORTH);
+        panel.add(createEditingToolbar(), BorderLayout.CENTER);
         return panel;
+    }
+
+    private JSplitPane createRuntimeSplitPanel() {
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, createRuntimePanel(), createBottomPanel());
+        splitPane.setResizeWeight(0.78);
+        splitPane.setOneTouchExpandable(true);
+        canvas.setMinimumSize(new Dimension(360, 240));
+        splitPane.setMinimumSize(new Dimension(360, 320));
+        return splitPane;
     }
 
     private JPanel createBottomPanel() {
         JPanel panel = new JPanel(new BorderLayout(6, 6));
         panel.add(createDetailsPanel(), BorderLayout.CENTER);
+        guidanceLabel.setBorder(new EmptyBorder(4, 4, 4, 4));
+        panel.add(guidanceLabel, BorderLayout.NORTH);
         panel.add(createHeaderPanel(), BorderLayout.SOUTH);
         return panel;
     }
@@ -264,15 +279,15 @@ public class OperatorPanel extends JPanel {
     }
 
     private JPanel createDetailsPanel() {
-        JPanel panel = new JPanel(new BorderLayout(4, 4));
-        panel.setBorder(new CompoundBorder(new TitledBorder("Board Inspector"), new EmptyBorder(4, 4, 4, 4)));
+        detailsPanel = new JPanel(new BorderLayout(4, 4));
+        detailsPanel.setBorder(new CompoundBorder(new TitledBorder("Board Inspector"), new EmptyBorder(4, 4, 4, 4)));
         placementDetailsTable.setFillsViewportHeight(true);
         placementDetailsTable.setDefaultRenderer(Object.class, new PlacementDetailsRenderer());
         placementDetailsTable.setDefaultRenderer(Boolean.class, new PlacementDetailsRenderer());
-        panel.add(selectionLabel, BorderLayout.NORTH);
-        panel.add(new JScrollPane(placementDetailsTable), BorderLayout.CENTER);
-        panel.setPreferredSize(new java.awt.Dimension(320, 120));
-        return panel;
+        detailsPanel.add(selectionLabel, BorderLayout.NORTH);
+        detailsPanel.add(placementDetailsScrollPane, BorderLayout.CENTER);
+        updateDetailsPanelSize();
+        return detailsPanel;
     }
 
     private JPanel createPostRunPanel() {
@@ -317,7 +332,14 @@ public class OperatorPanel extends JPanel {
     }
 
     private boolean isEditingAllowed() {
-        return jobPanel.getJob() != null && jobPanel.getState() == JobPanel.State.Stopped;
+        if (jobPanel.getJob() == null) {
+            return false;
+        }
+        JobPanel.State state = jobPanel.getState();
+        if (state == JobPanel.State.Running || state == JobPanel.State.Pausing || state == JobPanel.State.Paused) {
+            return false;
+        }
+        return state == JobPanel.State.Stopped || "Stopped".equals(jobPanel.getJobState());
     }
 
     private String machineNotReadyReason() {
@@ -453,6 +475,10 @@ public class OperatorPanel extends JPanel {
 
     private void openJob(boolean reset) {
         FileDialog fileDialog = new FileDialog((Frame) SwingUtilities.getWindowAncestor(this), "Open Job");
+        File recentJob = jobPanel.getMostRecentJobFile();
+        if (recentJob != null && recentJob.getParentFile() != null && recentJob.getParentFile().isDirectory()) {
+            fileDialog.setDirectory(recentJob.getParentFile().getAbsolutePath());
+        }
         fileDialog.setFilenameFilter((FilenameFilter) (dir, name) -> name.toLowerCase().endsWith(".job.xml"));
         fileDialog.setVisible(true);
         if (fileDialog.getFile() == null) {
@@ -726,7 +752,7 @@ public class OperatorPanel extends JPanel {
 
     private void enableTray(JEDEC_TrayFeeder feeder) {
         try {
-            editingService.setFeederEnabled(feeder, true);
+            editingService.setFeederEnabled(feeder, !feeder.isEnabled());
             refreshAndPersistView(false);
         }
         catch (Exception e) {
@@ -774,6 +800,7 @@ public class OperatorPanel extends JPanel {
         if (selectedBoards.isEmpty()) {
             selectionLabel.setText("Select a board to inspect placements.");
             updatingDetails = false;
+            updateDetailsPanelSize();
             return;
         }
         PlacementsHolderLocation<?> board = selectedBoards.iterator().next();
@@ -788,6 +815,23 @@ public class OperatorPanel extends JPanel {
                     placed, status });
         }
         updatingDetails = false;
+        updateDetailsPanelSize();
+    }
+
+    private void updateDetailsPanelSize() {
+        if (detailsPanel == null) {
+            return;
+        }
+        int rows = Math.max(2, Math.min(10, Math.max(placementDetailsModel.getRowCount(), 1)));
+        int headerHeight = placementDetailsTable.getTableHeader() == null ? placementDetailsTable.getRowHeight()
+                : placementDetailsTable.getTableHeader().getPreferredSize().height;
+        int tableHeight = headerHeight + rows * placementDetailsTable.getRowHeight()
+                + placementDetailsScrollPane.getHorizontalScrollBar().getPreferredSize().height;
+        int labelHeight = selectionLabel.getPreferredSize().height;
+        Insets insets = detailsPanel.getInsets();
+        int height = Math.max(110, Math.min(260, tableHeight + labelHeight + insets.top + insets.bottom + 22));
+        detailsPanel.setPreferredSize(new Dimension(320, height));
+        detailsPanel.revalidate();
     }
 
     private List<RowPlacement> filteredPlacements(Set<PlacementsHolderLocation<?>> boards) {

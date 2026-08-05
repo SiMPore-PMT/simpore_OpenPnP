@@ -663,6 +663,10 @@ public class JobPanel extends JPanel {
         updateRecentJobsMenu();
     }
 
+    public File getMostRecentJobFile() {
+        return recentJobs.isEmpty() ? null : recentJobs.get(0);
+    }
+
     private void saveRecentJobs() {
         // blow away all the existing values
         for (int i = 0; i < PREF_RECENT_FILES_MAX; i++) {
