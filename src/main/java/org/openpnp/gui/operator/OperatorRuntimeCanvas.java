@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Set;
 
 import javax.swing.JPanel;
+import javax.swing.UIManager;
 
 import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder;
 import org.openpnp.machine.reference.feeder.ReferenceTrayFeeder;
@@ -40,6 +41,8 @@ public class OperatorRuntimeCanvas extends JPanel {
         void showPlacementContextMenu(Component invoker, int x, int y, Set<PlacementsHolderLocation<?>> selection);
         void showTrayPocketContextMenu(Component invoker, int x, int y, JEDEC_TrayFeeder feeder,
                 int feedIndexBase0, int displayPosition);
+        void resetTray(JEDEC_TrayFeeder feeder);
+        void enableTray(JEDEC_TrayFeeder feeder);
     }
 
     private static final Color BACKGROUND = new Color(250, 250, 250);
@@ -64,18 +67,30 @@ public class OperatorRuntimeCanvas extends JPanel {
     private final Set<PlacementsHolderLocation<?>> selectedBoards = new LinkedHashSet<>();
     private final List<BoardHit> boardHits = new ArrayList<>();
     private final List<TrayPocketHit> trayPocketHits = new ArrayList<>();
+    private final List<TrayActionHit> trayActionHits = new ArrayList<>();
     private Rectangle dragRectangle;
     private int dragStartX;
     private int dragStartY;
 
     public OperatorRuntimeCanvas() {
-        setPreferredSize(new Dimension(620, 420));
-        setBackground(BACKGROUND);
+        setPreferredSize(new Dimension(760, 520));
+        Color lafBackground = UIManager.getColor("Panel.background");
+        setBackground(lafBackground == null ? BACKGROUND : lafBackground);
         MouseAdapter mouseAdapter = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
                 if (e.isPopupTrigger()) {
                     showPopup(e);
+                    return;
+                }
+                TrayActionHit actionHit = findTrayAction(e.getX(), e.getY());
+                if (actionHit != null && listener != null) {
+                    if (actionHit.reset) {
+                        listener.resetTray(actionHit.feeder);
+                    }
+                    else {
+                        listener.enableTray(actionHit.feeder);
+                    }
                     return;
                 }
                 if (editMode != EditMode.NONE && editingAllowed) {
@@ -158,6 +173,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         super.paintComponent(g);
         boardHits.clear();
         trayPocketHits.clear();
+        trayActionHits.clear();
         Graphics2D g2 = (Graphics2D) g.create();
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -215,35 +231,49 @@ public class OperatorRuntimeCanvas extends JPanel {
         int rows = tray.getEffectiveTrayCountRows();
         int cols = tray.getEffectiveTrayCountCols();
         int feedCount = tray.getFeedCount();
-        int cell = Math.max(7, Math.min(16, 180 / Math.max(rows, cols)));
-        g2.setColor(Color.DARK_GRAY);
-        g2.drawString(tray.getName() + "  Next: " + (feedCount + 1), x, y + 10);
+        int cell = Math.max(14, Math.min(24, 240 / Math.max(rows, cols)));
+        int cardWidth = cols * cell + 160;
+        int cardHeight = rows * cell + 34;
+        boolean enabled = tray.isEnabled();
+        g2.setColor(enabled ? SECTION : new Color(90, 72, 56, 80));
+        g2.fillRoundRect(x - 6, y - 4, cardWidth, cardHeight, 12, 12);
+        g2.setColor(enabled ? BORDER : new Color(190, 110, 60));
+        g2.drawRoundRect(x - 6, y - 4, cardWidth, cardHeight, 12, 12);
+        g2.setColor(enabled ? Color.DARK_GRAY : new Color(190, 80, 40));
+        g2.drawString(tray.getName() + "  Next: " + (feedCount + 1) + (enabled ? "" : "  Disabled"), x, y + 10);
         for (int index = 0; index < rows * cols; index++) {
             JEDEC_TrayFeeder.GridIndex grid = JEDEC_TrayFeeder.getGridIndexForFeed(index, rows, cols,
                     tray.getStartCorner(), tray.getFirstRasterDirection(), tray.getRasterPattern());
             int px = x + grid.col * cell;
-            int py = y + 18 + grid.row * cell;
-            g2.setColor(index < feedCount ? TRAY_USED : TRAY_AVAILABLE);
+            int py = y + 18 + (rows - 1 - grid.row) * cell;
+            g2.setColor(!enabled ? BOARD_DISABLED : index < feedCount ? TRAY_USED : TRAY_AVAILABLE);
             g2.fillRoundRect(px, py, cell - 2, cell - 2, 3, 3);
             g2.setColor(new Color(255, 255, 255, 150));
             g2.drawRoundRect(px, py, cell - 2, cell - 2, 3, 3);
             trayPocketHits.add(new TrayPocketHit(tray, index, index + 1,
                     new Rectangle(px, py, cell - 2, cell - 2)));
         }
-        return y + 34 + rows * cell;
+        int buttonX = x + cols * cell + 14;
+        Rectangle reset = new Rectangle(buttonX, y + 20, 120, 24);
+        Rectangle enable = new Rectangle(buttonX, y + 50, 120, 24);
+        drawButton(g2, reset, "Reset Tray", enabled);
+        drawButton(g2, enable, enabled ? "Enabled" : "Enable Tray", enabled);
+        trayActionHits.add(new TrayActionHit(tray, reset, true));
+        trayActionHits.add(new TrayActionHit(tray, enable, false));
+        return y + 44 + rows * cell;
     }
 
     private int drawReferenceTray(Graphics2D g2, ReferenceTrayFeeder tray, int x, int y) {
         int rows = tray.getEffectiveTrayCountY();
         int cols = tray.getEffectiveTrayCountX();
-        int cell = Math.max(7, Math.min(16, 180 / Math.max(rows, cols)));
+        int cell = Math.max(12, Math.min(20, 220 / Math.max(rows, cols)));
         g2.setColor(Color.GRAY);
         g2.drawString(tray.getName() + "  (view only)", x, y + 10);
         for (int row = 0; row < rows; row++) {
             for (int col = 0; col < cols; col++) {
                 int index = row * cols + col;
                 g2.setColor(index < tray.getFeedCount() ? TRAY_USED : new Color(175, 205, 225));
-                g2.fillRoundRect(x + col * cell, y + 18 + row * cell, cell - 2, cell - 2, 3, 3);
+                g2.fillRoundRect(x + col * cell, y + 18 + (rows - 1 - row) * cell, cell - 2, cell - 2, 3, 3);
             }
         }
         return y + 34 + rows * cell;
@@ -270,7 +300,7 @@ public class OperatorRuntimeCanvas extends JPanel {
             return;
         }
         Bounds bounds = new Bounds(locations);
-        Rectangle area = new Rectangle(getWidth() / 3, 50, getWidth() * 2 / 3 - 20, getHeight() - 74);
+        Rectangle area = new Rectangle(Math.min(280, getWidth() / 3), 46, getWidth() - Math.min(300, getWidth() / 3) - 18, getHeight() - 60);
         g2.setColor(Color.DARK_GRAY);
         g2.drawString("Job Layout", area.x, area.y - 10);
         g2.setColor(SECTION);
@@ -286,7 +316,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         Location bl = boardLocation.getGlobalLocation();
         int bx = bounds.x(bl, area);
         int by = bounds.y(bl, area);
-        Rectangle boardBounds = new Rectangle(bx - 24, by - 16, 48, 32);
+        Rectangle boardBounds = new Rectangle(bx - 40, by - 28, 80, 56);
         boolean enabled = boardLocation.isEnabled();
         boolean selected = selectedBoards.contains(boardLocation);
         g2.setColor(enabled ? BOARD_FILL : BOARD_DISABLED);
@@ -301,9 +331,6 @@ public class OperatorRuntimeCanvas extends JPanel {
         }
         boardHits.add(new BoardHit(boardLocation, boardBounds));
         for (Placement placement : boardLocation.getPlacementsHolder().getPlacements()) {
-            if (!placement.isEnabled()) {
-                continue;
-            }
             drawPlacement(g2, bounds, area, boardLocation, placement, enabled);
         }
     }
@@ -314,21 +341,22 @@ public class OperatorRuntimeCanvas extends JPanel {
         int x = bounds.x(p, area);
         int y = bounds.y(p, area);
         boolean placed = job.retrievePlacedStatus(boardLocation, placement.getId());
+        boolean placementEnabled = placement.isEnabled();
         Color color = placed ? PLACED : (placement.getType() == Placement.Type.Fiducial ? FIDUCIAL
                 : placement.getType() == Placement.Type.Dispense ? DISPENSE : PLACEMENT);
-        if (!boardEnabled) {
-            color = Color.GRAY;
+        if (!boardEnabled || !placementEnabled) {
+            color = !placementEnabled ? new Color(210, 95, 30) : Color.GRAY;
         }
         g2.setColor(color);
         if (placement.getType() == Placement.Type.Fiducial) {
-            g2.fillOval(x - 3, y - 3, 6, 6);
+            g2.fillOval(x - 6, y - 6, 12, 12);
         }
         else if (placement.getType() == Placement.Type.Dispense) {
-            g2.drawOval(x - 4, y - 4, 8, 8);
+            g2.drawOval(x - 7, y - 7, 14, 14);
         }
         else if (placement.getType() == Placement.Type.Placement) {
-            g2.drawLine(x - 4, y - 4, x + 4, y + 4);
-            g2.drawLine(x + 4, y - 4, x - 4, y + 4);
+            g2.drawLine(x - 7, y - 7, x + 7, y + 7);
+            g2.drawLine(x + 7, y - 7, x - 7, y + 7);
         }
     }
 
@@ -405,6 +433,15 @@ public class OperatorRuntimeCanvas extends JPanel {
         return null;
     }
 
+    private TrayActionHit findTrayAction(int x, int y) {
+        for (TrayActionHit hit : trayActionHits) {
+            if (hit.bounds.contains(x, y)) {
+                return hit;
+            }
+        }
+        return null;
+    }
+
     private TrayPocketHit findTrayPocket(int x, int y) {
         for (TrayPocketHit hit : trayPocketHits) {
             if (hit.bounds.contains(x, y)) {
@@ -429,6 +466,26 @@ public class OperatorRuntimeCanvas extends JPanel {
         BoardHit(PlacementsHolderLocation<?> boardLocation, Rectangle bounds) {
             this.boardLocation = boardLocation;
             this.bounds = bounds;
+        }
+    }
+
+    private void drawButton(Graphics2D g2, Rectangle bounds, String text, boolean enabled) {
+        g2.setColor(enabled ? new Color(235, 239, 244) : new Color(250, 232, 220));
+        g2.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 8, 8);
+        g2.setColor(enabled ? BORDER : new Color(190, 110, 60));
+        g2.drawRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 8, 8);
+        g2.setColor(enabled ? Color.DARK_GRAY : new Color(150, 60, 30));
+        g2.drawString(text, bounds.x + 10, bounds.y + 16);
+    }
+
+    private static class TrayActionHit {
+        final JEDEC_TrayFeeder feeder;
+        final Rectangle bounds;
+        final boolean reset;
+        TrayActionHit(JEDEC_TrayFeeder feeder, Rectangle bounds, boolean reset) {
+            this.feeder = feeder;
+            this.bounds = bounds;
+            this.reset = reset;
         }
     }
 
@@ -461,7 +518,7 @@ public class OperatorRuntimeCanvas extends JPanel {
             return r.x + 24 + (int) ((l.getX() - minX) / Math.max(1, maxX - minX) * (r.width - 48));
         }
         int y(Location l, Rectangle r) {
-            return r.y + 24 + (int) ((l.getY() - minY) / Math.max(1, maxY - minY) * (r.height - 48));
+            return r.y + r.height - 24 - (int) ((l.getY() - minY) / Math.max(1, maxY - minY) * (r.height - 48));
         }
     }
 }

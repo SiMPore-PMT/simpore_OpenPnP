@@ -13,6 +13,7 @@ import org.openpnp.model.Configuration;
 import org.openpnp.model.Job;
 import org.openpnp.model.Placement;
 import org.openpnp.model.PlacementsHolderLocation;
+import org.openpnp.spi.Feeder;
 
 public class OperatorJobEditingService {
     private final Set<String> globallyDisabledDispenseKeys = new HashSet<>();
@@ -102,6 +103,12 @@ public class OperatorJobEditingService {
         feeder.setFeedCount(position);
         saveTrayProgress(job, feeder);
         return feeder.getFeedCount();
+    }
+
+    public void setFeederEnabled(Feeder feeder, boolean enabled) throws Exception {
+        feeder.setEnabled(enabled);
+        // Feeder enabled state is part of machine configuration in OpenPnP, not job state.
+        Configuration.get().save();
     }
 
     public void restoreTrayProgress(Job job, Iterable<JEDEC_TrayFeeder> feeders) throws IOException {

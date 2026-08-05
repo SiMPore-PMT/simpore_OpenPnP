@@ -43,7 +43,9 @@ import javax.swing.UIManager;
 import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableCellRenderer;
 
 import org.openpnp.ConfigurationListener;
 import org.openpnp.events.JobLoadedEvent;
@@ -108,14 +110,14 @@ public class OperatorPanel extends JPanel {
     private final JPanel postRunPanel = new JPanel(new GridBagLayout());
     private final JPanel editOptionsPanel = new JPanel(new GridBagLayout());
     private final DefaultTableModel placementDetailsModel = new DefaultTableModel(
-            new Object[] { "Id", "Type", "Part", "Side", "Enabled", "Placed" }, 0) {
+            new Object[] { "Id", "Type", "Part", "Side", "Enabled", "Placed", "Status" }, 0) {
         @Override
         public Class<?> getColumnClass(int columnIndex) {
-            return columnIndex >= 4 ? Boolean.class : String.class;
+            return columnIndex == 4 || columnIndex == 5 ? Boolean.class : String.class;
         }
         @Override
         public boolean isCellEditable(int row, int column) {
-            return isEditingAllowed() && column >= 4;
+            return isEditingAllowed() && (column == 4 || column == 5);
         }
     };
     private final JTable placementDetailsTable = new JTable(placementDetailsModel);
@@ -132,9 +134,10 @@ public class OperatorPanel extends JPanel {
         canvas.setListener(createCanvasListener());
 
         setBorder(new CompoundBorder(new TitledBorder("Runtime"), new EmptyBorder(8, 8, 8, 8)));
-        add(createHeaderPanel(), BorderLayout.NORTH);
+        setBackground(UIManager.getColor("Panel.background"));
+        add(createTopCommandPanel(), BorderLayout.NORTH);
         add(createRuntimePanel(), BorderLayout.CENTER);
-        add(createPostRunPanel(), BorderLayout.SOUTH);
+        add(createBottomPanel(), BorderLayout.SOUTH);
 
         startNewJobButton.addActionListener(e -> openJob(true));
         openNewJobButton.addActionListener(e -> openJob(true));
@@ -201,17 +204,15 @@ public class OperatorPanel extends JPanel {
 
     private JPanel createRuntimePanel() {
         JPanel runtime = new JPanel(new BorderLayout(8, 8));
-        runtime.setBorder(new EmptyBorder(6, 0, 0, 0));
+        runtime.setBorder(new EmptyBorder(6, 0, 6, 0));
         guidanceLabel.setBorder(new EmptyBorder(4, 4, 4, 4));
         runtime.add(guidanceLabel, BorderLayout.NORTH);
         runtime.add(canvas, BorderLayout.CENTER);
-        runtime.add(createBottomPanel(), BorderLayout.SOUTH);
-        runtime.add(createDetailsPanel(), BorderLayout.EAST);
         return runtime;
     }
 
-    private JPanel createBottomPanel() {
-        JPanel panel = new JPanel(new BorderLayout(4, 4));
+    private JPanel createTopCommandPanel() {
+        JPanel panel = new JPanel(new BorderLayout(8, 0));
         JToolBar jobToolBar = new JToolBar();
         jobToolBar.setFloatable(false);
         jobToolBar.add(startNewJobButton);
@@ -220,8 +221,18 @@ public class OperatorPanel extends JPanel {
         jobToolBar.add(pauseResumeButton);
         jobToolBar.add(stopButton);
         jobControlsPanel.add(jobToolBar, BorderLayout.CENTER);
-        panel.add(jobControlsPanel, BorderLayout.NORTH);
-        panel.add(createEditingToolbar(), BorderLayout.CENTER);
+        JPanel left = new JPanel(new BorderLayout(4, 4));
+        left.add(jobControlsPanel, BorderLayout.NORTH);
+        left.add(createEditingToolbar(), BorderLayout.CENTER);
+        panel.add(left, BorderLayout.CENTER);
+        panel.add(createPostRunPanel(), BorderLayout.EAST);
+        return panel;
+    }
+
+    private JPanel createBottomPanel() {
+        JPanel panel = new JPanel(new BorderLayout(6, 6));
+        panel.add(createDetailsPanel(), BorderLayout.CENTER);
+        panel.add(createHeaderPanel(), BorderLayout.SOUTH);
         return panel;
     }
 
@@ -253,6 +264,8 @@ public class OperatorPanel extends JPanel {
         JPanel panel = new JPanel(new BorderLayout(4, 4));
         panel.setBorder(new CompoundBorder(new TitledBorder("Board Inspector"), new EmptyBorder(4, 4, 4, 4)));
         placementDetailsTable.setFillsViewportHeight(true);
+        placementDetailsTable.setDefaultRenderer(Object.class, new PlacementDetailsRenderer());
+        placementDetailsTable.setDefaultRenderer(Boolean.class, new PlacementDetailsRenderer());
         panel.add(selectionLabel, BorderLayout.NORTH);
         panel.add(new JScrollPane(placementDetailsTable), BorderLayout.CENTER);
         panel.setPreferredSize(new java.awt.Dimension(320, 120));
@@ -565,6 +578,14 @@ public class OperatorPanel extends JPanel {
                     int feedIndexBase0, int displayPosition) {
                 OperatorPanel.this.showTrayPocketContextMenu(invoker, x, y, feeder, displayPosition);
             }
+            @Override
+            public void resetTray(JEDEC_TrayFeeder feeder) {
+                OperatorPanel.this.resetTray(feeder);
+            }
+            @Override
+            public void enableTray(JEDEC_TrayFeeder feeder) {
+                OperatorPanel.this.enableTray(feeder);
+            }
         };
     }
 
@@ -671,6 +692,16 @@ public class OperatorPanel extends JPanel {
         }
     }
 
+    private void enableTray(JEDEC_TrayFeeder feeder) {
+        try {
+            editingService.setFeederEnabled(feeder, true);
+            refreshAndPersistView(false);
+        }
+        catch (Exception e) {
+            showEditError(e);
+        }
+    }
+
     private void resetTray(JEDEC_TrayFeeder feeder) {
         if (!confirmEdit("Refresh " + feeder.getName() + " and set its next position to 1?")) {
             return;
@@ -718,9 +749,11 @@ public class OperatorPanel extends JPanel {
         for (Placement placement : board.getPlacementsHolder().getPlacements()) {
             rowPlacements.add(new RowPlacement(board, placement));
             Part part = placement.getPart();
+            boolean placed = jobPanel.getJob().retrievePlacedStatus(board, placement.getId());
+            String status = !placement.isEnabled() ? "Disabled" : placed ? "Placed" : "Pending";
             placementDetailsModel.addRow(new Object[] { placement.getId(), placement.getType().name(),
                     part == null ? "" : part.getId(), placement.getSide().name(), placement.isEnabled(),
-                    jobPanel.getJob().retrievePlacedStatus(board, placement.getId()) });
+                    placed, status });
         }
         updatingDetails = false;
     }
@@ -793,6 +826,46 @@ public class OperatorPanel extends JPanel {
     @Subscribe public void jobLoaded(JobLoadedEvent event) { SwingUtilities.invokeLater(() -> refreshJobAndFeeders()); }
     @Subscribe public void placementChanged(PlacementChangedEvent event) { SwingUtilities.invokeLater(() -> repaintRuntime()); }
     @Subscribe public void placementsHolderLocationChanged(PlacementsHolderLocationChangedEvent event) { SwingUtilities.invokeLater(() -> repaintRuntime()); }
+
+    private class PlacementDetailsRenderer extends DefaultTableCellRenderer {
+        private final TableCellRenderer booleanRenderer = placementDetailsTable.getDefaultRenderer(Boolean.class);
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean selected,
+                boolean focus, int row, int column) {
+            Component component = column >= 4 && column <= 5
+                    ? booleanRenderer.getTableCellRendererComponent(table, value, selected, focus, row, column)
+                    : super.getTableCellRendererComponent(table, value, selected, focus, row, column);
+            if (!selected) {
+                component.setBackground(UIManager.getColor("Table.background"));
+                component.setForeground(UIManager.getColor("Table.foreground"));
+            }
+            if (!selected && row >= 0 && row < rowPlacements.size()) {
+                RowPlacement rowPlacement = rowPlacements.get(row);
+                boolean placed = jobPanel.getJob() != null
+                        && jobPanel.getJob().retrievePlacedStatus(rowPlacement.boardLocation, rowPlacement.placement.getId());
+                if (!rowPlacement.placement.isEnabled()) {
+                    component.setBackground(new Color(255, 230, 210));
+                    component.setForeground(new Color(120, 55, 20));
+                }
+                else if (placed) {
+                    component.setBackground(new Color(255, 243, 204));
+                    component.setForeground(new Color(105, 80, 20));
+                }
+                else if (column == 1) {
+                    if (rowPlacement.placement.getType() == Placement.Type.Fiducial) {
+                        component.setForeground(new Color(44, 150, 82));
+                    }
+                    else if (rowPlacement.placement.getType() == Placement.Type.Dispense) {
+                        component.setForeground(new Color(210, 132, 34));
+                    }
+                    else {
+                        component.setForeground(new Color(35, 92, 170));
+                    }
+                }
+            }
+            return component;
+        }
+    }
 
     private static class SlashedIcon implements Icon {
         private final Icon delegate;
