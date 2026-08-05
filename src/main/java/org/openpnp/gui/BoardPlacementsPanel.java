@@ -125,6 +125,7 @@ public class BoardPlacementsPanel extends JPanel {
     
     private static Color typeColorFiducial = new Color(157, 188, 255);
     private static Color typeColorPlacement = new Color(255, 255, 255);
+    private static Color typeColorDispense = new Color(206, 255, 255);
     
     public BoardPlacementsPanel(BoardsPanel boardsPanel) {
     	this.boardsPanel = boardsPanel;
@@ -187,7 +188,7 @@ public class BoardPlacementsPanel extends JPanel {
         JComboBox<Side> sidesComboBox = new JComboBox<>(Side.values());
         // Note we don't use Type.values() here because there are a couple Types that are only
         // there for backwards compatibility and we don't want them in the list.
-        JComboBox<Type> typesComboBox = new JComboBox<>(new Type[] { Type.Placement, Type.Fiducial });
+        JComboBox<Type> typesComboBox = new JComboBox<>(new Type[] { Type.Placement, Type.Fiducial, Type.Dispense });
         JComboBox<ErrorHandling> errorHandlingComboBox = new JComboBox<>(ErrorHandling.values());
         
         setLayout(new BorderLayout(0, 0));
@@ -298,6 +299,7 @@ public class BoardPlacementsPanel extends JPanel {
         JMenu setTypeMenu = new JMenu(setTypeAction);
         setTypeMenu.add(new SetTypeAction(Placement.Type.Placement));
         setTypeMenu.add(new SetTypeAction(Placement.Type.Fiducial));
+        setTypeMenu.add(new SetTypeAction(Placement.Type.Dispense));
         popupMenu.add(setTypeMenu);
 
         JMenu setSideMenu = new JMenu(setSideAction);
@@ -699,6 +701,9 @@ public class BoardPlacementsPanel extends JPanel {
             else if (type == Placement.Type.Placement) {
                 name = Translations.getString("Placement.Type.Placement"); //$NON-NLS-1$
             }
+            else if (type == Placement.Type.Dispense) {
+                name = Translations.getString("Placement.Type.Dispense"); //$NON-NLS-1$
+            }
             else {
                 name = type.toString();
             }
@@ -856,6 +861,9 @@ public class BoardPlacementsPanel extends JPanel {
             else if (type == Placement.Type.Placement) {
                 name = Translations.getString("Placement.Type.Placement"); //$NON-NLS-1$
             }
+            else if (type == Placement.Type.Dispense) {
+                name = Translations.getString("Placement.Type.Dispense"); //$NON-NLS-1$
+            }
             else {
                 name = value.toString();
             }
@@ -870,6 +878,9 @@ public class BoardPlacementsPanel extends JPanel {
             if (value == Type.Fiducial) {
                 c.setForeground(Color.black);
                 c.setBackground(typeColorFiducial);
+            } else if (value == Type.Dispense) {
+                c.setForeground(Color.black);
+                c.setBackground(typeColorDispense);
             } else if (isSelected) {
                 c.setForeground(table.getSelectionForeground());
                 c.setBackground(table.getSelectionBackground());

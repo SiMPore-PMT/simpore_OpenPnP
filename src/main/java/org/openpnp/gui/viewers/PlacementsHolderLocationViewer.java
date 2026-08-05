@@ -1435,17 +1435,30 @@ public class PlacementsHolderLocationViewer extends JPanel implements PropertyCh
     private void displayPlacementPopupMenu(Point point, PlacementsHolderLocation<?> phl, 
             String uniqueId, Placement placement, boolean enablable) {
         final Placement plmt = placement;
-        String type = plmt.getType() == Placement.Type.Fiducial ?
-                Translations.getString("Placement.Type.Fiducial") : //$NON-NLS-1$
-                Translations.getString("Placement.Type.Placement"); //$NON-NLS-1$
+        String type;
+        String typeLabel;
+        if (plmt.getType() == Placement.Type.Placement) {
+            type = Translations.getString("Placement.Type.Placement"); //$NON-NLS-1$
+            typeLabel = Translations.getString("PlacementsHolderLocationViewer.Placement.Type.Placement"); //$NON-NLS-1$
+        }
+        else if (plmt.getType() == Placement.Type.Fiducial) {
+            type = Translations.getString("Placement.Type.Fiducial"); //$NON-NLS-1$
+            typeLabel = Translations.getString("PlacementsHolderLocationViewer.Placement.Type.Fiducial"); //$NON-NLS-1$
+        }
+        else if (plmt.getType() == Placement.Type.Dispense) {
+            type = Translations.getString("Placement.Type.Dispense"); //$NON-NLS-1$
+            typeLabel = Translations.getString("PlacementsHolderLocationViewer.Placement.Type.Dispense"); //$NON-NLS-1$
+        }
+        else {
+            type = plmt.getType().toString();
+            typeLabel = type;
+        }
         String side = phl.getGlobalSide() == Side.Top ?
                 Translations.getString("Placement.Side.Top") : //$NON-NLS-1$
                 Translations.getString("Placement.Side.Bottom"); //$NON-NLS-1$
         String popupLabel = "<pre>" + //$NON-NLS-1$
                 "<b>" + //$NON-NLS-1$
-                (plmt.getType() == Placement.Type.Placement ?
-                        Translations.getString("PlacementsHolderLocationViewer.Placement.Type.Placement") : //$NON-NLS-1$
-                            Translations.getString("PlacementsHolderLocationViewer.Placement.Type.Fiducial")) + //$NON-NLS-1$
+                typeLabel +
                 "</b><br>" + //$NON-NLS-1$
                Translations.getString("PlacementsHolderLocationViewer.PopupMenu.Label.Id") + //$NON-NLS-1$
                 (uniqueId.contentEquals("") ? "" :  //$NON-NLS-1$ //$NON-NLS-2$
