@@ -536,10 +536,17 @@ public class JobPanel extends JPanel {
         synchronized (scriptPauseLock) {
             if (state == State.Pausing) {
                 scriptPauseActive = true;
+                Logger.trace("Script pause acknowledged");
                 setState(State.Paused);
                 try {
                     while (state == State.Paused) {
                         scriptPauseLock.wait();
+                    }
+                    if (state == State.Running) {
+                        Logger.trace("Script pause resumed");
+                    }
+                    else {
+                        Logger.trace("Script pause exited with state " + state);
                     }
                 }
                 catch (InterruptedException e) {
