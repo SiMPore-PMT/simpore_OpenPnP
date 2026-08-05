@@ -86,8 +86,8 @@ public class OperatorPanel extends JPanel {
     private final JButton pauseResumeButton = createActionButton("Pause / Resume", Icons.pause,
             "Pause or resume the current job");
     private final JButton stopButton = createActionButton("Stop", Icons.stop, "Stop the current job");
-    private final JButton resetBoardButton = createActionButton("Reset Board", Icons.refresh,
-            "Reset placements and tray feeder counts for the loaded job");
+    private final JButton resetBoardButton = createActionButton("Reset Job", Icons.refresh,
+            "Reset the loaded job and tray feeder counts for a fresh run");
     private final JButton modifyLastRunButton = createActionButton("Modify Last Run", Icons.board,
             "Open the existing Job editor for the loaded job");
     private final JButton openNewJobButton = createActionButton("Open New Job", Icons.add,
@@ -152,8 +152,11 @@ public class OperatorPanel extends JPanel {
         dispenseFilter.addActionListener(e -> updateButtons());
         fiducialFilter.addActionListener(e -> updateButtons());
         placementDetailsTable.getModel().addTableModelListener(e -> applyPlacementTableEdit(e.getFirstRow(), e.getColumn()));
-        startButton.addActionListener(e -> jobPanel.startPauseResumeJobAction.actionPerformed(
-                new ActionEvent(this, ActionEvent.ACTION_PERFORMED, "operator-start")));
+        startButton.addActionListener(e -> {
+            turnEditOff();
+            jobPanel.startPauseResumeJobAction.actionPerformed(
+                    new ActionEvent(this, ActionEvent.ACTION_PERFORMED, "operator-start"));
+        });
         pauseResumeButton.addActionListener(e -> jobPanel.startPauseResumeJobAction.actionPerformed(
                 new ActionEvent(this, ActionEvent.ACTION_PERFORMED, "operator-pause-resume")));
         stopButton.addActionListener(e -> jobPanel.stopJobAction.actionPerformed(
@@ -379,14 +382,34 @@ public class OperatorPanel extends JPanel {
     }
 
     private void updateEditMode() {
-        editOptionsPanel.setVisible(editToggle.isSelected());
-        if (!editToggle.isSelected() || !isEditingAllowed()) {
+        boolean editVisible = editToggle.isSelected() && isEditingAllowed();
+        if (editVisible && !boardModeToggle.isSelected() && !placementModeToggle.isSelected()) {
+            boardModeToggle.setSelected(true);
+        }
+        boolean placementMode = editVisible && placementModeToggle.isSelected();
+        boardModeToggle.setVisible(editVisible);
+        placementModeToggle.setVisible(editVisible);
+        placementFilter.setVisible(placementMode);
+        dispenseFilter.setVisible(placementMode);
+        fiducialFilter.setVisible(placementMode);
+        if (!editVisible) {
+            canvas.clearSelection();
+            selectedBoards.clear();
+            updateDetailsPanel();
             canvas.setEditMode(EditMode.NONE);
         }
         else {
             canvas.setEditMode(boardModeToggle.isSelected() ? EditMode.BOARD : EditMode.PLACEMENT);
         }
+        revalidate();
         repaintRuntime();
+    }
+
+    private void turnEditOff() {
+        if (editToggle.isSelected()) {
+            editToggle.setSelected(false);
+        }
+        updateEditMode();
     }
 
     private void updateStatusLabel(String state, boolean ready, boolean hasJob, String notReadyReason) {
@@ -498,6 +521,9 @@ public class OperatorPanel extends JPanel {
 
     private void handleJobStateChange(String oldState, String newState) {
         SwingUtilities.invokeLater(() -> {
+            if ("Running".equals(newState)) {
+                turnEditOff();
+            }
             updateButtons();
             repaintRuntime();
             Job job = jobPanel.getJob();

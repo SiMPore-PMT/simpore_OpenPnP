@@ -163,6 +163,12 @@ public class OperatorRuntimeCanvas extends JPanel {
         repaint();
     }
 
+    public void clearSelection() {
+        selectedBoards.clear();
+        dragRectangle = null;
+        repaint();
+    }
+
     public void setSelectedTool(HeadMountable selectedTool) {
         this.selectedTool = selectedTool;
         repaint();
@@ -180,8 +186,8 @@ public class OperatorRuntimeCanvas extends JPanel {
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             g2.setStroke(new BasicStroke(1.5f));
             drawTool(g2);
-            drawFeeders(g2);
             drawJob(g2);
+            drawFeeders(g2);
             drawDragSelection(g2);
         }
         finally {
@@ -210,57 +216,92 @@ public class OperatorRuntimeCanvas extends JPanel {
         if (Configuration.get().getMachine() == null) {
             return;
         }
-        int x = 12;
-        int y = 50;
-        g2.setColor(Color.DARK_GRAY);
-        g2.drawString("JEDEC Tray Feeders", x, y - 10);
+        List<Feeder> trays = new ArrayList<>();
         for (Feeder feeder : Configuration.get().getMachine().getFeeders()) {
-            if (feeder instanceof JEDEC_TrayFeeder) {
-                y = drawJedecTray(g2, (JEDEC_TrayFeeder) feeder, x, y);
-            }
-            else if (feeder instanceof ReferenceTrayFeeder) {
-                y = drawReferenceTray(g2, (ReferenceTrayFeeder) feeder, x, y);
-            }
-            if (y > getHeight() - 80) {
-                break;
+            if (feeder instanceof JEDEC_TrayFeeder || feeder instanceof ReferenceTrayFeeder) {
+                trays.add(feeder);
             }
         }
+        int y = getHeight() - 18;
+        int x = 12;
+        for (int i = trays.size() - 1; i >= 0; i--) {
+            Feeder feeder = trays.get(i);
+            int height = feeder instanceof JEDEC_TrayFeeder
+                    ? getJedecTrayHeight((JEDEC_TrayFeeder) feeder)
+                    : getReferenceTrayHeight((ReferenceTrayFeeder) feeder);
+            y -= height;
+            if (y < 42) {
+                break;
+            }
+            if (feeder instanceof JEDEC_TrayFeeder) {
+                drawJedecTray(g2, (JEDEC_TrayFeeder) feeder, x, y);
+            }
+            else {
+                drawReferenceTray(g2, (ReferenceTrayFeeder) feeder, x, y);
+            }
+            y -= 8;
+        }
+    }
+
+    private int getJedecTrayHeight(JEDEC_TrayFeeder tray) {
+        int cell = Math.max(14, Math.min(24, 240 / Math.max(tray.getEffectiveTrayCountRows(), tray.getEffectiveTrayCountCols())));
+        return tray.getEffectiveTrayCountRows() * cell + 58;
+    }
+
+    private int getReferenceTrayHeight(ReferenceTrayFeeder tray) {
+        int cell = Math.max(12, Math.min(20, 220 / Math.max(tray.getEffectiveTrayCountY(), tray.getEffectiveTrayCountX())));
+        return tray.getEffectiveTrayCountY() * cell + 34;
     }
 
     private int drawJedecTray(Graphics2D g2, JEDEC_TrayFeeder tray, int x, int y) {
         int rows = tray.getEffectiveTrayCountRows();
         int cols = tray.getEffectiveTrayCountCols();
         int feedCount = tray.getFeedCount();
+        int capacity = rows * cols;
+        int nextIndex = Math.max(0, Math.min(feedCount, capacity - 1));
         int cell = Math.max(14, Math.min(24, 240 / Math.max(rows, cols)));
-        int cardWidth = cols * cell + 160;
-        int cardHeight = rows * cell + 34;
+        int cardWidth = cols * cell + 170;
+        int cardHeight = rows * cell + 58;
         boolean enabled = tray.isEnabled();
         g2.setColor(enabled ? SECTION : new Color(90, 72, 56, 80));
         g2.fillRoundRect(x - 6, y - 4, cardWidth, cardHeight, 12, 12);
         g2.setColor(enabled ? BORDER : new Color(190, 110, 60));
         g2.drawRoundRect(x - 6, y - 4, cardWidth, cardHeight, 12, 12);
         g2.setColor(enabled ? Color.DARK_GRAY : new Color(190, 80, 40));
-        g2.drawString(tray.getName() + "  Next: " + (feedCount + 1) + (enabled ? "" : "  Disabled"), x, y + 10);
-        for (int index = 0; index < rows * cols; index++) {
+        String status = enabled ? "Position " + (nextIndex + 1) + " • Remaining " + Math.max(0, capacity - feedCount) : "Disabled";
+        g2.drawString(tray.getName(), x, y + 12);
+        g2.setColor(enabled ? new Color(80, 110, 140) : new Color(190, 80, 40));
+        g2.drawString(status, x, y + 28);
+        for (int index = 0; index < capacity; index++) {
             JEDEC_TrayFeeder.GridIndex grid = JEDEC_TrayFeeder.getGridIndexForFeed(index, rows, cols,
                     tray.getStartCorner(), tray.getFirstRasterDirection(), tray.getRasterPattern());
             int px = x + grid.col * cell;
-            int py = y + 18 + (rows - 1 - grid.row) * cell;
+            int py = y + 36 + (rows - 1 - grid.row) * cell;
             g2.setColor(!enabled ? BOARD_DISABLED : index < feedCount ? TRAY_USED : TRAY_AVAILABLE);
             g2.fillRoundRect(px, py, cell - 2, cell - 2, 3, 3);
             g2.setColor(new Color(255, 255, 255, 150));
             g2.drawRoundRect(px, py, cell - 2, cell - 2, 3, 3);
+            if (enabled && index == nextIndex) {
+                g2.setStroke(new BasicStroke(2.4f));
+                g2.setColor(PLACED);
+                g2.drawRoundRect(px - 2, py - 2, cell + 2, cell + 2, 6, 6);
+                g2.setStroke(new BasicStroke(1.5f));
+            }
             trayPocketHits.add(new TrayPocketHit(tray, index, index + 1,
                     new Rectangle(px, py, cell - 2, cell - 2)));
         }
+        if (enabled) {
+            g2.setColor(PLACED.darker());
+            g2.drawString("Next Pick", x + cols * cell + 18, y + 28);
+        }
         int buttonX = x + cols * cell + 14;
-        Rectangle reset = new Rectangle(buttonX, y + 20, 120, 24);
-        Rectangle enable = new Rectangle(buttonX, y + 50, 120, 24);
+        Rectangle reset = new Rectangle(buttonX, y + 42, 120, 24);
+        Rectangle enable = new Rectangle(buttonX, y + 72, 120, 24);
         drawButton(g2, reset, "Reset Tray", enabled);
         drawButton(g2, enable, enabled ? "Enabled" : "Enable Tray", enabled);
         trayActionHits.add(new TrayActionHit(tray, reset, true));
         trayActionHits.add(new TrayActionHit(tray, enable, false));
-        return y + 44 + rows * cell;
+        return y + cardHeight + 4;
     }
 
     private int drawReferenceTray(Graphics2D g2, ReferenceTrayFeeder tray, int x, int y) {
@@ -300,7 +341,8 @@ public class OperatorRuntimeCanvas extends JPanel {
             return;
         }
         Bounds bounds = new Bounds(locations);
-        Rectangle area = new Rectangle(Math.min(280, getWidth() / 3), 46, getWidth() - Math.min(300, getWidth() / 3) - 18, getHeight() - 60);
+        int trayColumnWidth = Math.min(300, Math.max(230, getWidth() / 3));
+        Rectangle area = new Rectangle(trayColumnWidth + 16, 46, getWidth() - trayColumnWidth - 34, getHeight() - 60);
         g2.setColor(Color.DARK_GRAY);
         g2.drawString("Job Layout", area.x, area.y - 10);
         g2.setColor(SECTION);
