@@ -33,6 +33,7 @@ import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JSplitPane;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
@@ -139,8 +140,7 @@ public class OperatorPanel extends JPanel {
         setBorder(new CompoundBorder(new TitledBorder("Runtime"), new EmptyBorder(8, 8, 8, 8)));
         setBackground(UIManager.getColor("Panel.background"));
         add(createTopCommandPanel(), BorderLayout.NORTH);
-        add(createRuntimePanel(), BorderLayout.CENTER);
-        add(createBottomPanel(), BorderLayout.SOUTH);
+        add(createRuntimeSplitPanel(), BorderLayout.CENTER);
 
         startNewJobButton.addActionListener(e -> openJob(true));
         openNewJobButton.addActionListener(e -> openJob(true));
@@ -217,21 +217,32 @@ public class OperatorPanel extends JPanel {
 
     private JPanel createTopCommandPanel() {
         JPanel panel = new JPanel(new BorderLayout(4, 4));
-        JToolBar jobToolBar = new JToolBar();
-        jobToolBar.setFloatable(false);
-        jobToolBar.add(startNewJobButton);
-        jobToolBar.addSeparator();
-        jobToolBar.add(startButton);
-        jobToolBar.add(pauseResumeButton);
-        jobToolBar.add(stopButton);
-        jobToolBar.addSeparator();
-        jobToolBar.add(resetBoardButton);
-        jobToolBar.add(modifyLastRunButton);
-        jobToolBar.add(openNewJobButton);
-        jobControlsPanel.add(jobToolBar, BorderLayout.CENTER);
+        JToolBar primaryToolBar = new JToolBar();
+        primaryToolBar.setFloatable(false);
+        primaryToolBar.add(startNewJobButton);
+        primaryToolBar.addSeparator();
+        primaryToolBar.add(startButton);
+        primaryToolBar.add(pauseResumeButton);
+        primaryToolBar.add(stopButton);
+        JToolBar secondaryToolBar = new JToolBar();
+        secondaryToolBar.setFloatable(false);
+        secondaryToolBar.add(resetBoardButton);
+        secondaryToolBar.add(modifyLastRunButton);
+        secondaryToolBar.add(openNewJobButton);
+        jobControlsPanel.add(primaryToolBar, BorderLayout.WEST);
+        jobControlsPanel.add(secondaryToolBar, BorderLayout.EAST);
         panel.add(jobControlsPanel, BorderLayout.NORTH);
         panel.add(createEditingToolbar(), BorderLayout.CENTER);
         return panel;
+    }
+
+    private JSplitPane createRuntimeSplitPanel() {
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, createRuntimePanel(), createBottomPanel());
+        splitPane.setResizeWeight(0.78);
+        splitPane.setOneTouchExpandable(true);
+        canvas.setMinimumSize(new Dimension(360, 240));
+        splitPane.setMinimumSize(new Dimension(360, 320));
+        return splitPane;
     }
 
     private JPanel createBottomPanel() {
@@ -321,7 +332,14 @@ public class OperatorPanel extends JPanel {
     }
 
     private boolean isEditingAllowed() {
-        return jobPanel.getJob() != null && jobPanel.getState() == JobPanel.State.Stopped;
+        if (jobPanel.getJob() == null) {
+            return false;
+        }
+        JobPanel.State state = jobPanel.getState();
+        if (state == JobPanel.State.Running || state == JobPanel.State.Pausing || state == JobPanel.State.Paused) {
+            return false;
+        }
+        return state == JobPanel.State.Stopped || "Stopped".equals(jobPanel.getJobState());
     }
 
     private String machineNotReadyReason() {
