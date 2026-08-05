@@ -60,6 +60,9 @@ public class OperatorRuntimeCanvas extends JPanel {
     private static final Color PLACED = new Color(210, 158, 24);
     private static final Color FIDUCIAL = new Color(44, 150, 82);
     private static final Color DISPENSE = new Color(210, 132, 34);
+    private static final int TOOL_HEIGHT = 78;
+    private static final int BOARD_WIDTH = 108;
+    private static final int BOARD_HEIGHT = 76;
 
     private Job job;
     private HeadMountable selectedTool;
@@ -204,11 +207,26 @@ public class OperatorRuntimeCanvas extends JPanel {
             text = type + ": " + name;
         }
         g2.setColor(SECTION);
-        g2.fillRoundRect(10, 8, Math.min(getWidth() - 20, 320), 26, 10, 10);
+        g2.fillRoundRect(10, 8, Math.min(getWidth() - 20, 360), 64, 10, 10);
         g2.setColor(BORDER);
-        g2.drawRoundRect(10, 8, Math.min(getWidth() - 20, 320), 26, 10, 10);
+        g2.drawRoundRect(10, 8, Math.min(getWidth() - 20, 360), 64, 10, 10);
         g2.setColor(TEXT);
         g2.drawString(text, 22, 26);
+        int lx = 22;
+        int ly = 44;
+        drawLegendItem(g2, lx, ly, PLACEMENT, "Placement / pick");
+        drawLegendItem(g2, lx + 122, ly, FIDUCIAL, "Fiducial");
+        drawLegendItem(g2, lx + 198, ly, DISPENSE, "Dispense");
+        drawLegendItem(g2, lx, ly + 18, PLACED, "Placed = gold");
+        g2.setColor(MUTED_TEXT);
+        g2.drawString("Disabled = hidden", lx + 122, ly + 22);
+    }
+
+    private void drawLegendItem(Graphics2D g2, int x, int y, Color color, String label) {
+        g2.setColor(color);
+        g2.fillOval(x, y - 8, 10, 10);
+        g2.setColor(MUTED_TEXT);
+        g2.drawString(label, x + 14, y);
     }
 
     private void drawFeeders(Graphics2D g2) {
@@ -229,7 +247,7 @@ public class OperatorRuntimeCanvas extends JPanel {
                     ? getJedecTrayHeight((JEDEC_TrayFeeder) feeder)
                     : getReferenceTrayHeight((ReferenceTrayFeeder) feeder);
             y -= height;
-            if (y < 42) {
+            if (y < TOOL_HEIGHT + 6) {
                 break;
             }
             if (feeder instanceof JEDEC_TrayFeeder) {
@@ -244,7 +262,7 @@ public class OperatorRuntimeCanvas extends JPanel {
 
     private int getJedecTrayHeight(JEDEC_TrayFeeder tray) {
         int cell = Math.max(14, Math.min(24, 240 / Math.max(tray.getEffectiveTrayCountRows(), tray.getEffectiveTrayCountCols())));
-        return tray.getEffectiveTrayCountRows() * cell + 58;
+        return tray.getEffectiveTrayCountRows() * cell + 104;
     }
 
     private int getReferenceTrayHeight(ReferenceTrayFeeder tray) {
@@ -259,15 +277,17 @@ public class OperatorRuntimeCanvas extends JPanel {
         int capacity = rows * cols;
         int nextIndex = Math.max(0, Math.min(feedCount, capacity - 1));
         int cell = Math.max(14, Math.min(24, 240 / Math.max(rows, cols)));
-        int cardWidth = cols * cell + 170;
-        int cardHeight = rows * cell + 58;
+        int gridWidth = cols * cell;
+        int gridHeight = rows * cell;
+        int cardWidth = Math.max(gridWidth + 20, 244);
+        int cardHeight = gridHeight + 104;
         boolean enabled = tray.isEnabled();
         g2.setColor(enabled ? SECTION : new Color(90, 72, 56, 80));
         g2.fillRoundRect(x - 6, y - 4, cardWidth, cardHeight, 12, 12);
         g2.setColor(enabled ? BORDER : new Color(190, 110, 60));
         g2.drawRoundRect(x - 6, y - 4, cardWidth, cardHeight, 12, 12);
         g2.setColor(enabled ? TEXT : new Color(245, 150, 100));
-        String status = enabled ? "Position " + (nextIndex + 1) + " • Remaining " + Math.max(0, capacity - feedCount) : "Disabled";
+        String status = enabled ? "Next pick: " + (nextIndex + 1) + " • Remaining " + Math.max(0, capacity - feedCount) : "Disabled";
         g2.drawString(tray.getName(), x, y + 12);
         g2.setColor(enabled ? MUTED_TEXT : new Color(245, 150, 100));
         g2.drawString(status, x, y + 28);
@@ -275,7 +295,7 @@ public class OperatorRuntimeCanvas extends JPanel {
             JEDEC_TrayFeeder.GridIndex grid = JEDEC_TrayFeeder.getGridIndexForFeed(index, rows, cols,
                     tray.getStartCorner(), tray.getFirstRasterDirection(), tray.getRasterPattern());
             int px = x + grid.col * cell;
-            int py = y + 36 + (rows - 1 - grid.row) * cell;
+            int py = y + 36 + grid.row * cell;
             g2.setColor(!enabled ? BOARD_DISABLED : index < feedCount ? TRAY_USED : TRAY_AVAILABLE);
             g2.fillRoundRect(px, py, cell - 2, cell - 2, 3, 3);
             g2.setColor(new Color(255, 255, 255, 85));
@@ -289,18 +309,34 @@ public class OperatorRuntimeCanvas extends JPanel {
             trayPocketHits.add(new TrayPocketHit(tray, index, index + 1,
                     new Rectangle(px, py, cell - 2, cell - 2)));
         }
-        if (enabled) {
-            g2.setColor(PLACED);
-            g2.drawString("Next Pick", x + cols * cell + 18, y + 28);
-        }
-        int buttonX = x + cols * cell + 14;
-        Rectangle reset = new Rectangle(buttonX, y + 42, 120, 24);
-        Rectangle enable = new Rectangle(buttonX, y + 72, 120, 24);
-        drawButton(g2, reset, "Reset Tray", enabled);
-        drawButton(g2, enable, enabled ? "Enabled" : "Enable Tray", enabled);
+        int controlsY = y + 42 + gridHeight;
+        Rectangle reset = new Rectangle(x, controlsY + 14, 28, 28);
+        Rectangle enable = new Rectangle(x + 96, controlsY + 18, 92, 20);
+        drawResetControl(g2, reset, enabled);
+        drawEnableToggle(g2, enable, enabled);
         trayActionHits.add(new TrayActionHit(tray, reset, true));
         trayActionHits.add(new TrayActionHit(tray, enable, false));
         return y + cardHeight + 4;
+    }
+
+    private void drawResetControl(Graphics2D g2, Rectangle bounds, boolean enabled) {
+        g2.setColor(enabled ? new Color(66, 76, 90) : new Color(92, 64, 48));
+        g2.fillOval(bounds.x, bounds.y, bounds.width, bounds.height);
+        g2.setColor(enabled ? BORDER : new Color(210, 120, 70));
+        g2.drawOval(bounds.x, bounds.y, bounds.width, bounds.height);
+        g2.setColor(enabled ? TEXT : new Color(255, 185, 130));
+        g2.drawString("↻", bounds.x + 8, bounds.y + 19);
+        g2.drawString("Reset tray", bounds.x + 36, bounds.y + 19);
+    }
+
+    private void drawEnableToggle(Graphics2D g2, Rectangle bounds, boolean enabled) {
+        int cy = bounds.y + bounds.height / 2;
+        g2.setColor(TEXT);
+        g2.drawOval(bounds.x, cy - 6, 12, 12);
+        if (enabled) {
+            g2.fillOval(bounds.x + 3, cy - 3, 6, 6);
+        }
+        g2.drawString(enabled ? "Enabled" : "Disabled", bounds.x + 18, bounds.y + 14);
     }
 
     private int drawReferenceTray(Graphics2D g2, ReferenceTrayFeeder tray, int x, int y) {
@@ -341,13 +377,14 @@ public class OperatorRuntimeCanvas extends JPanel {
         }
         Bounds bounds = new Bounds(locations);
         int trayColumnWidth = Math.min(300, Math.max(230, getWidth() / 3));
-        Rectangle area = new Rectangle(trayColumnWidth + 16, 46, getWidth() - trayColumnWidth - 34, getHeight() - 60);
-        g2.setColor(TEXT);
-        g2.drawString("Job Layout", area.x, area.y - 10);
+        Rectangle area = new Rectangle(trayColumnWidth + 16, TOOL_HEIGHT, getWidth() - trayColumnWidth - 34,
+                getHeight() - TOOL_HEIGHT - 22);
         g2.setColor(SECTION);
         g2.fillRoundRect(area.x, area.y, area.width, area.height, 14, 14);
         g2.setColor(BORDER);
         g2.drawRoundRect(area.x, area.y, area.width, area.height, 14, 14);
+        g2.setColor(TEXT);
+        g2.drawString("Job Layout", area.x + 12, area.y + 18);
         for (PlacementsHolderLocation<?> boardLocation : job.getBoardLocations()) {
             drawBoard(g2, bounds, area, boardLocation);
         }
@@ -355,9 +392,12 @@ public class OperatorRuntimeCanvas extends JPanel {
 
     private void drawBoard(Graphics2D g2, Bounds bounds, Rectangle area, PlacementsHolderLocation<?> boardLocation) {
         Location bl = boardLocation.getGlobalLocation();
+        if (!boardLocation.isEnabled()) {
+            return;
+        }
         int bx = bounds.x(bl, area);
         int by = bounds.y(bl, area);
-        Rectangle boardBounds = new Rectangle(bx - 54, by - 38, 108, 76);
+        Rectangle boardBounds = new Rectangle(bx - BOARD_WIDTH / 2, by - BOARD_HEIGHT / 2, BOARD_WIDTH, BOARD_HEIGHT);
         boolean enabled = boardLocation.isEnabled();
         boolean selected = selectedBoards.contains(boardLocation);
         g2.setColor(enabled ? BOARD_FILL : BOARD_DISABLED);
@@ -378,16 +418,15 @@ public class OperatorRuntimeCanvas extends JPanel {
 
     private void drawPlacement(Graphics2D g2, Bounds bounds, Rectangle area, PlacementsHolderLocation<?> boardLocation,
             Placement placement, boolean boardEnabled) {
+        if (!boardEnabled || !placement.isEnabled()) {
+            return;
+        }
         Location p = boardLocation.getGlobalLocation().add(placement.getLocation());
         int x = bounds.x(p, area);
         int y = bounds.y(p, area);
         boolean placed = job.retrievePlacedStatus(boardLocation, placement.getId());
-        boolean placementEnabled = placement.isEnabled();
         Color color = placed ? PLACED : (placement.getType() == Placement.Type.Fiducial ? FIDUCIAL
                 : placement.getType() == Placement.Type.Dispense ? DISPENSE : PLACEMENT);
-        if (!boardEnabled || !placementEnabled) {
-            color = !placementEnabled ? new Color(210, 95, 30) : Color.GRAY;
-        }
         g2.setColor(color);
         if (placement.getType() == Placement.Type.Fiducial) {
             g2.fillOval(x - 8, y - 8, 16, 16);
@@ -560,10 +599,12 @@ public class OperatorRuntimeCanvas extends JPanel {
             }
         }
         int x(Location l, Rectangle r) {
-            return r.x + 24 + (int) ((l.getX() - minX) / Math.max(1, maxX - minX) * (r.width - 48));
+            return r.x + 24 + (int) ((l.getX() - minX) / Math.max(1, maxX - minX) * (r.width - 48) * 0.72
+                    + (r.width - 48) * 0.14);
         }
         int y(Location l, Rectangle r) {
-            return r.y + r.height - 24 - (int) ((l.getY() - minY) / Math.max(1, maxY - minY) * (r.height - 48));
+            return r.y + r.height - 24 - (int) ((l.getY() - minY) / Math.max(1, maxY - minY) * (r.height - 48) * 0.72
+                    + (r.height - 48) * 0.14);
         }
     }
 }

@@ -208,8 +208,6 @@ public class OperatorPanel extends JPanel {
     private JPanel createRuntimePanel() {
         JPanel runtime = new JPanel(new BorderLayout(8, 8));
         runtime.setBorder(new EmptyBorder(6, 0, 6, 0));
-        guidanceLabel.setBorder(new EmptyBorder(4, 4, 4, 4));
-        runtime.add(guidanceLabel, BorderLayout.NORTH);
         runtime.add(canvas, BorderLayout.CENTER);
         return runtime;
     }
@@ -235,6 +233,8 @@ public class OperatorPanel extends JPanel {
     private JPanel createBottomPanel() {
         JPanel panel = new JPanel(new BorderLayout(6, 6));
         panel.add(createDetailsPanel(), BorderLayout.CENTER);
+        guidanceLabel.setBorder(new EmptyBorder(4, 4, 4, 4));
+        panel.add(guidanceLabel, BorderLayout.NORTH);
         panel.add(createHeaderPanel(), BorderLayout.SOUTH);
         return panel;
     }
@@ -720,7 +720,7 @@ public class OperatorPanel extends JPanel {
 
     private void enableTray(JEDEC_TrayFeeder feeder) {
         try {
-            editingService.setFeederEnabled(feeder, true);
+            editingService.setFeederEnabled(feeder, !feeder.isEnabled());
             refreshAndPersistView(false);
         }
         catch (Exception e) {

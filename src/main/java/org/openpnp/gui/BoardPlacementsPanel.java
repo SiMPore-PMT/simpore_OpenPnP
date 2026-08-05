@@ -123,9 +123,9 @@ public class BoardPlacementsPanel extends JPanel {
     private List<BoardImporter> boardImporters;
     private Configuration configuration;
     
-    private static Color typeColorFiducial = new Color(157, 188, 255);
-    private static Color typeColorPlacement = new Color(255, 255, 255);
-    private static Color typeColorDispense = new Color(206, 255, 255);
+    private static Color typeColorFiducial = new Color(152, 216, 170);
+    private static Color typeColorPlacement = new Color(142, 190, 230);
+    private static Color typeColorDispense = new Color(238, 188, 112);
     
     public BoardPlacementsPanel(BoardsPanel boardsPanel) {
     	this.boardsPanel = boardsPanel;
@@ -875,16 +875,23 @@ public class BoardPlacementsPanel extends JPanel {
                                                        boolean isSelected, boolean hasFocus, int row, int column) {
             Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
             Color alternateRowColor = UIManager.getColor("Table.alternateRowColor"); //$NON-NLS-1$
-            if (value == Type.Fiducial) {
-                c.setForeground(Color.black);
-                c.setBackground(typeColorFiducial);
-            } else if (value == Type.Dispense) {
-                c.setForeground(Color.black);
-                c.setBackground(typeColorDispense);
-            } else if (isSelected) {
+            if (isSelected) {
                 c.setForeground(table.getSelectionForeground());
                 c.setBackground(table.getSelectionBackground());
-            } else {
+            }
+            else if (value == Type.Fiducial) {
+                c.setForeground(Color.white);
+                c.setBackground(typeColorFiducial);
+            }
+            else if (value == Type.Placement) {
+                c.setForeground(Color.white);
+                c.setBackground(typeColorPlacement);
+            }
+            else if (value == Type.Dispense) {
+                c.setForeground(Color.white);
+                c.setBackground(typeColorDispense);
+            }
+            else {
                 c.setForeground(table.getForeground());
                 c.setBackground(row%2==0 ? table.getBackground() : alternateRowColor);
             }
