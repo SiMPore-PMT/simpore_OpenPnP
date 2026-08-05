@@ -21,6 +21,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 
+import org.openpnp.ConfigurationListener;
 import org.openpnp.events.JobLoadedEvent;
 import org.openpnp.events.PlacementChangedEvent;
 import org.openpnp.events.PlacementsHolderLocationChangedEvent;
@@ -84,7 +85,13 @@ public class OperatorPanel extends JPanel {
         pauseResumeButton.addActionListener(e -> jobPanel.startPauseResumeJobAction.actionPerformed(new ActionEvent(this, ActionEvent.ACTION_PERFORMED, "operator-pause-resume")));
         stopButton.addActionListener(e -> jobPanel.stopJobAction.actionPerformed(new ActionEvent(this, ActionEvent.ACTION_PERFORMED, "operator-stop")));
         jobPanel.addPropertyChangeListener("state", e -> handleJobStateChange((String) e.getOldValue(), (String) e.getNewValue()));
-        Configuration.get().getMachine().addListener(machineListener);
+        Configuration.get().addListener(new ConfigurationListener.Adapter() {
+            @Override
+            public void configurationComplete(Configuration configuration) throws Exception {
+                configuration.getMachine().addListener(machineListener);
+                SwingUtilities.invokeLater(() -> refreshJobAndFeeders());
+            }
+        });
         Configuration.get().getBus().register(this);
         updateButtons();
         refreshJobAndFeeders();
@@ -98,7 +105,7 @@ public class OperatorPanel extends JPanel {
 
     private boolean machineReady() {
         Machine machine = Configuration.get().getMachine();
-        return machine.isEnabled() && machine.isHomed();
+        return machine != null && machine.isEnabled() && machine.isHomed();
     }
 
     private void updateButtons() {
@@ -183,7 +190,13 @@ public class OperatorPanel extends JPanel {
             modelObject.removePropertyChangeListener(feederPropertyListener);
         }
         feederListeners.clear();
-        for (Feeder feeder : Configuration.get().getMachine().getFeeders()) {
+        Machine machine = Configuration.get().getMachine();
+        if (machine == null) {
+            updateButtons();
+            repaintRuntime();
+            return;
+        }
+        for (Feeder feeder : machine.getFeeders()) {
             if (feeder instanceof AbstractModelObject) {
                 AbstractModelObject modelObject = (AbstractModelObject) feeder;
                 modelObject.addPropertyChangeListener("feedCount", feederPropertyListener);

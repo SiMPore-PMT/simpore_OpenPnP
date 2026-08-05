@@ -72,6 +72,9 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     private void drawFeeders(Graphics2D g2) {
+        if (Configuration.get().getMachine() == null) {
+            return;
+        }
         int x = 12;
         int y = 32;
         for (Feeder feeder : Configuration.get().getMachine().getFeeders()) {
