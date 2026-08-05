@@ -276,7 +276,7 @@ public class OperatorPanel extends JPanel {
     }
 
     private JPanel createPostRunPanel() {
-        postRunPanel.setBorder(new CompoundBorder(new TitledBorder("After Run"), new EmptyBorder(4, 4, 4, 4)));
+        postRunPanel.setBorder(new EmptyBorder(0, 0, 0, 0));
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.gridx = 0;
         gbc.gridy = 0;
@@ -393,9 +393,6 @@ public class OperatorPanel extends JPanel {
         dispenseFilter.setVisible(placementMode);
         fiducialFilter.setVisible(placementMode);
         if (!editVisible) {
-            canvas.clearSelection();
-            selectedBoards.clear();
-            updateDetailsPanel();
             canvas.setEditMode(EditMode.NONE);
         }
         else {
@@ -409,6 +406,9 @@ public class OperatorPanel extends JPanel {
         if (editToggle.isSelected()) {
             editToggle.setSelected(false);
         }
+        canvas.clearSelection();
+        selectedBoards.clear();
+        updateDetailsPanel();
         updateEditMode();
     }
 
@@ -869,27 +869,36 @@ public class OperatorPanel extends JPanel {
                 RowPlacement rowPlacement = rowPlacements.get(row);
                 boolean placed = jobPanel.getJob() != null
                         && jobPanel.getJob().retrievePlacedStatus(rowPlacement.boardLocation, rowPlacement.placement.getId());
-                if (!rowPlacement.placement.isEnabled()) {
-                    component.setBackground(new Color(255, 230, 210));
-                    component.setForeground(new Color(120, 55, 20));
+                if (column == 1) {
+                    component.setBackground(typeBackground(rowPlacement.placement));
+                    component.setForeground(Color.WHITE);
+                    if (component instanceof JLabel) {
+                        ((JLabel) component).setHorizontalAlignment(SwingConstants.CENTER);
+                    }
+                }
+                else if (!rowPlacement.placement.isEnabled()) {
+                    component.setBackground(new Color(95, 58, 42));
+                    component.setForeground(new Color(255, 210, 180));
                 }
                 else if (placed) {
-                    component.setBackground(new Color(255, 243, 204));
-                    component.setForeground(new Color(105, 80, 20));
-                }
-                else if (column == 1) {
-                    if (rowPlacement.placement.getType() == Placement.Type.Fiducial) {
-                        component.setForeground(new Color(44, 150, 82));
-                    }
-                    else if (rowPlacement.placement.getType() == Placement.Type.Dispense) {
-                        component.setForeground(new Color(210, 132, 34));
-                    }
-                    else {
-                        component.setForeground(new Color(35, 92, 170));
-                    }
+                    component.setBackground(new Color(92, 76, 38));
+                    component.setForeground(new Color(255, 226, 150));
                 }
             }
             return component;
+        }
+
+        private Color typeBackground(Placement placement) {
+            if (!placement.isEnabled()) {
+                return new Color(190, 95, 45);
+            }
+            if (placement.getType() == Placement.Type.Fiducial) {
+                return new Color(44, 150, 82);
+            }
+            if (placement.getType() == Placement.Type.Dispense) {
+                return new Color(210, 132, 34);
+            }
+            return new Color(35, 92, 170);
         }
     }
 

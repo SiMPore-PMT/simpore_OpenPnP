@@ -45,14 +45,16 @@ public class OperatorRuntimeCanvas extends JPanel {
         void enableTray(JEDEC_TrayFeeder feeder);
     }
 
-    private static final Color BACKGROUND = new Color(250, 250, 250);
-    private static final Color SECTION = new Color(245, 247, 250);
-    private static final Color BORDER = new Color(190, 198, 208);
-    private static final Color TRAY_AVAILABLE = new Color(104, 171, 224);
-    private static final Color TRAY_USED = new Color(178, 182, 188);
-    private static final Color BOARD_FILL = new Color(232, 238, 248);
-    private static final Color BOARD_DISABLED = new Color(220, 220, 220);
-    private static final Color BOARD_BORDER = new Color(67, 92, 135);
+    private static final Color BACKGROUND = new Color(35, 39, 46);
+    private static final Color SECTION = new Color(47, 53, 62);
+    private static final Color BORDER = new Color(92, 105, 124);
+    private static final Color TEXT = new Color(218, 224, 232);
+    private static final Color MUTED_TEXT = new Color(165, 175, 188);
+    private static final Color TRAY_AVAILABLE = new Color(78, 143, 190);
+    private static final Color TRAY_USED = new Color(82, 88, 98);
+    private static final Color BOARD_FILL = new Color(58, 72, 92);
+    private static final Color BOARD_DISABLED = new Color(74, 72, 70);
+    private static final Color BOARD_BORDER = new Color(86, 135, 190);
     private static final Color SELECTED = new Color(38, 120, 210);
     private static final Color PLACEMENT = new Color(174, 54, 54);
     private static final Color PLACED = new Color(210, 158, 24);
@@ -74,8 +76,7 @@ public class OperatorRuntimeCanvas extends JPanel {
 
     public OperatorRuntimeCanvas() {
         setPreferredSize(new Dimension(760, 520));
-        Color lafBackground = UIManager.getColor("Panel.background");
-        setBackground(lafBackground == null ? BACKGROUND : lafBackground);
+        setBackground(BACKGROUND);
         MouseAdapter mouseAdapter = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -115,10 +116,8 @@ public class OperatorRuntimeCanvas extends JPanel {
                     showPopup(e);
                     return;
                 }
-                if (editMode == EditMode.NONE || !editingAllowed) {
-                    return;
-                }
-                if (dragRectangle != null && dragRectangle.width > 4 && dragRectangle.height > 4) {
+                boolean editSelection = editMode != EditMode.NONE && editingAllowed;
+                if (editSelection && dragRectangle != null && dragRectangle.width > 4 && dragRectangle.height > 4) {
                     selectBoardsIn(dragRectangle, isMenuShortcutDown(e));
                     dragRectangle = null;
                     repaint();
@@ -126,7 +125,7 @@ public class OperatorRuntimeCanvas extends JPanel {
                 }
                 BoardHit hit = findBoard(e.getX(), e.getY());
                 if (hit != null) {
-                    selectBoard(hit.boardLocation, isMenuShortcutDown(e));
+                    selectBoard(hit.boardLocation, editSelection && isMenuShortcutDown(e));
                     if (listener != null) {
                         listener.boardClicked(hit.boardLocation);
                     }
@@ -208,7 +207,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         g2.fillRoundRect(10, 8, Math.min(getWidth() - 20, 320), 26, 10, 10);
         g2.setColor(BORDER);
         g2.drawRoundRect(10, 8, Math.min(getWidth() - 20, 320), 26, 10, 10);
-        g2.setColor(FIDUCIAL.darker());
+        g2.setColor(TEXT);
         g2.drawString(text, 22, 26);
     }
 
@@ -267,10 +266,10 @@ public class OperatorRuntimeCanvas extends JPanel {
         g2.fillRoundRect(x - 6, y - 4, cardWidth, cardHeight, 12, 12);
         g2.setColor(enabled ? BORDER : new Color(190, 110, 60));
         g2.drawRoundRect(x - 6, y - 4, cardWidth, cardHeight, 12, 12);
-        g2.setColor(enabled ? Color.DARK_GRAY : new Color(190, 80, 40));
+        g2.setColor(enabled ? TEXT : new Color(245, 150, 100));
         String status = enabled ? "Position " + (nextIndex + 1) + " • Remaining " + Math.max(0, capacity - feedCount) : "Disabled";
         g2.drawString(tray.getName(), x, y + 12);
-        g2.setColor(enabled ? new Color(80, 110, 140) : new Color(190, 80, 40));
+        g2.setColor(enabled ? MUTED_TEXT : new Color(245, 150, 100));
         g2.drawString(status, x, y + 28);
         for (int index = 0; index < capacity; index++) {
             JEDEC_TrayFeeder.GridIndex grid = JEDEC_TrayFeeder.getGridIndexForFeed(index, rows, cols,
@@ -279,7 +278,7 @@ public class OperatorRuntimeCanvas extends JPanel {
             int py = y + 36 + (rows - 1 - grid.row) * cell;
             g2.setColor(!enabled ? BOARD_DISABLED : index < feedCount ? TRAY_USED : TRAY_AVAILABLE);
             g2.fillRoundRect(px, py, cell - 2, cell - 2, 3, 3);
-            g2.setColor(new Color(255, 255, 255, 150));
+            g2.setColor(new Color(255, 255, 255, 85));
             g2.drawRoundRect(px, py, cell - 2, cell - 2, 3, 3);
             if (enabled && index == nextIndex) {
                 g2.setStroke(new BasicStroke(2.4f));
@@ -291,7 +290,7 @@ public class OperatorRuntimeCanvas extends JPanel {
                     new Rectangle(px, py, cell - 2, cell - 2)));
         }
         if (enabled) {
-            g2.setColor(PLACED.darker());
+            g2.setColor(PLACED);
             g2.drawString("Next Pick", x + cols * cell + 18, y + 28);
         }
         int buttonX = x + cols * cell + 14;
@@ -308,12 +307,12 @@ public class OperatorRuntimeCanvas extends JPanel {
         int rows = tray.getEffectiveTrayCountY();
         int cols = tray.getEffectiveTrayCountX();
         int cell = Math.max(12, Math.min(20, 220 / Math.max(rows, cols)));
-        g2.setColor(Color.GRAY);
+        g2.setColor(MUTED_TEXT);
         g2.drawString(tray.getName() + "  (view only)", x, y + 10);
         for (int row = 0; row < rows; row++) {
             for (int col = 0; col < cols; col++) {
                 int index = row * cols + col;
-                g2.setColor(index < tray.getFeedCount() ? TRAY_USED : new Color(175, 205, 225));
+                g2.setColor(index < tray.getFeedCount() ? TRAY_USED : new Color(80, 125, 155));
                 g2.fillRoundRect(x + col * cell, y + 18 + (rows - 1 - row) * cell, cell - 2, cell - 2, 3, 3);
             }
         }
@@ -326,7 +325,7 @@ public class OperatorRuntimeCanvas extends JPanel {
             g2.fillRoundRect(getWidth() / 3, getHeight() / 3, getWidth() / 3, 70, 16, 16);
             g2.setColor(BORDER);
             g2.drawRoundRect(getWidth() / 3, getHeight() / 3, getWidth() / 3, 70, 16, 16);
-            g2.setColor(Color.GRAY);
+            g2.setColor(MUTED_TEXT);
             g2.drawString("No job loaded", getWidth() / 2 - 42, getHeight() / 3 + 38);
             return;
         }
@@ -343,7 +342,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         Bounds bounds = new Bounds(locations);
         int trayColumnWidth = Math.min(300, Math.max(230, getWidth() / 3));
         Rectangle area = new Rectangle(trayColumnWidth + 16, 46, getWidth() - trayColumnWidth - 34, getHeight() - 60);
-        g2.setColor(Color.DARK_GRAY);
+        g2.setColor(TEXT);
         g2.drawString("Job Layout", area.x, area.y - 10);
         g2.setColor(SECTION);
         g2.fillRoundRect(area.x, area.y, area.width, area.height, 14, 14);
@@ -358,12 +357,12 @@ public class OperatorRuntimeCanvas extends JPanel {
         Location bl = boardLocation.getGlobalLocation();
         int bx = bounds.x(bl, area);
         int by = bounds.y(bl, area);
-        Rectangle boardBounds = new Rectangle(bx - 40, by - 28, 80, 56);
+        Rectangle boardBounds = new Rectangle(bx - 54, by - 38, 108, 76);
         boolean enabled = boardLocation.isEnabled();
         boolean selected = selectedBoards.contains(boardLocation);
         g2.setColor(enabled ? BOARD_FILL : BOARD_DISABLED);
         g2.fillRoundRect(boardBounds.x, boardBounds.y, boardBounds.width, boardBounds.height, 10, 10);
-        g2.setColor(enabled ? BOARD_BORDER : Color.GRAY);
+        g2.setColor(enabled ? BOARD_BORDER : MUTED_TEXT);
         g2.drawRoundRect(boardBounds.x, boardBounds.y, boardBounds.width, boardBounds.height, 10, 10);
         if (selected) {
             g2.setStroke(new BasicStroke(3f));
@@ -391,14 +390,18 @@ public class OperatorRuntimeCanvas extends JPanel {
         }
         g2.setColor(color);
         if (placement.getType() == Placement.Type.Fiducial) {
-            g2.fillOval(x - 6, y - 6, 12, 12);
+            g2.fillOval(x - 8, y - 8, 16, 16);
         }
         else if (placement.getType() == Placement.Type.Dispense) {
-            g2.drawOval(x - 7, y - 7, 14, 14);
+            g2.setStroke(new BasicStroke(2.2f));
+            g2.drawOval(x - 10, y - 10, 20, 20);
+            g2.setStroke(new BasicStroke(1.5f));
         }
         else if (placement.getType() == Placement.Type.Placement) {
-            g2.drawLine(x - 7, y - 7, x + 7, y + 7);
-            g2.drawLine(x + 7, y - 7, x - 7, y + 7);
+            g2.setStroke(new BasicStroke(2.4f));
+            g2.drawLine(x - 10, y - 10, x + 10, y + 10);
+            g2.drawLine(x + 10, y - 10, x - 10, y + 10);
+            g2.setStroke(new BasicStroke(1.5f));
         }
     }
 
@@ -512,11 +515,11 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     private void drawButton(Graphics2D g2, Rectangle bounds, String text, boolean enabled) {
-        g2.setColor(enabled ? new Color(235, 239, 244) : new Color(250, 232, 220));
+        g2.setColor(enabled ? new Color(66, 76, 90) : new Color(92, 64, 48));
         g2.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 8, 8);
-        g2.setColor(enabled ? BORDER : new Color(190, 110, 60));
+        g2.setColor(enabled ? BORDER : new Color(210, 120, 70));
         g2.drawRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 8, 8);
-        g2.setColor(enabled ? Color.DARK_GRAY : new Color(150, 60, 30));
+        g2.setColor(enabled ? TEXT : new Color(255, 185, 130));
         g2.drawString(text, bounds.x + 10, bounds.y + 16);
     }
 
