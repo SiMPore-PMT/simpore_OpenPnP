@@ -60,12 +60,14 @@ public class OperatorRuntimeCanvas extends JPanel {
     private static final Color SELECTED = new Color(38, 120, 210);
     private static final Color PLACEMENT = new Color(174, 54, 54);
     private static final Color PLACED = new Color(210, 158, 24);
-    private static final Color FIDUCIAL = new Color(44, 150, 82);
+    private static final Color FIDUCIAL = new Color(155, 105, 210);
     private static final Color DISPENSE = new Color(210, 132, 34);
     private static final int TOOL_HEIGHT = 96;
     private static final int BOARD_WIDTH = 108;
     private static final int BOARD_HEIGHT = 76;
     private static final int BOARD_GAP = 10;
+    private static final int JOB_CONTENT_PADDING = 10;
+    private static final int JOB_HEADER_HEIGHT = 28;
 
     private Job job;
     private HeadMountable selectedTool;
@@ -394,16 +396,17 @@ public class OperatorRuntimeCanvas extends JPanel {
         g2.drawRoundRect(area.x, area.y, area.width, area.height, 14, 14);
         g2.setColor(TEXT);
         g2.drawString("Job Layout", area.x + 12, area.y + 18);
-        Bounds bounds = new Bounds(boards, area);
+        Rectangle content = new Rectangle(area.x + JOB_CONTENT_PADDING, area.y + JOB_HEADER_HEIGHT,
+                Math.max(0, area.width - JOB_CONTENT_PADDING * 2),
+                Math.max(0, area.height - JOB_HEADER_HEIGHT - JOB_CONTENT_PADDING));
+        Bounds bounds = new Bounds(boards, content);
         for (PlacementsHolderLocation<?> boardLocation : boards) {
             drawBoard(g2, bounds, boardLocation);
         }
     }
 
     private void drawBoard(Graphics2D g2, Bounds bounds, PlacementsHolderLocation<?> boardLocation) {
-        int bx = bounds.x(boardLocation);
-        int by = bounds.y(boardLocation);
-        Rectangle boardBounds = new Rectangle(bx - BOARD_WIDTH / 2, by - BOARD_HEIGHT / 2, BOARD_WIDTH, BOARD_HEIGHT);
+        Rectangle boardBounds = bounds.rectangle(boardLocation);
         boolean enabled = boardLocation.isEnabled();
         boolean selected = selectedBoards.contains(boardLocation);
         g2.setColor(enabled ? BOARD_FILL : BOARD_DISABLED);
@@ -421,19 +424,21 @@ public class OperatorRuntimeCanvas extends JPanel {
             return;
         }
         for (Placement placement : boardLocation.getPlacementsHolder().getPlacements()) {
-            drawPlacement(g2, boardBounds, boardLocation, placement, enabled);
+            drawPlacement(g2, boardBounds, bounds.scale, boardLocation, placement, enabled);
         }
     }
 
-    private void drawPlacement(Graphics2D g2, Rectangle boardBounds, PlacementsHolderLocation<?> boardLocation,
-            Placement placement, boolean boardEnabled) {
+    private void drawPlacement(Graphics2D g2, Rectangle boardBounds, double displayScale,
+            PlacementsHolderLocation<?> boardLocation, Placement placement, boolean boardEnabled) {
         if (!boardEnabled || !placement.isEnabled()) {
             return;
         }
-        Location origin = Utils2D.calculateBoardPlacementLocation(boardLocation);
+        Location dimensions = boardLocation.getPlacementsHolder().getDimensions();
+        Location boardCenter = dimensions.derive(dimensions.getX() / 2, dimensions.getY() / 2, 0.0, 0.0);
+        Location origin = Utils2D.calculateBoardPlacementLocation(boardLocation, boardCenter);
         Location p = Utils2D.calculateBoardPlacementLocation(boardLocation, placement.getLocation())
                 .convertToUnits(origin.getUnits());
-        Location dimensions = boardLocation.getPlacementsHolder().getDimensions().convertToUnits(origin.getUnits());
+        dimensions = dimensions.convertToUnits(origin.getUnits());
         double width = Math.max(1, Math.abs(dimensions.getX()));
         double height = Math.max(1, Math.abs(dimensions.getY()));
         double angle = Math.toRadians(origin.getRotation());
@@ -441,26 +446,32 @@ public class OperatorRuntimeCanvas extends JPanel {
         double globalY = p.getY() - origin.getY();
         double localX = globalX * Math.cos(angle) + globalY * Math.sin(angle);
         double localY = -globalX * Math.sin(angle) + globalY * Math.cos(angle);
-        int x = boardBounds.x + (int) Math.round(localX / width * BOARD_WIDTH);
-        int y = boardBounds.y + BOARD_HEIGHT - (int) Math.round(localY / height * BOARD_HEIGHT);
-        x = Math.max(boardBounds.x + 13, Math.min(boardBounds.x + boardBounds.width - 13, x));
-        y = Math.max(boardBounds.y + 13, Math.min(boardBounds.y + boardBounds.height - 13, y));
+        int x = boardBounds.x + boardBounds.width / 2
+                + (int) Math.round(localX / width * boardBounds.width);
+        int y = boardBounds.y + boardBounds.height / 2
+                - (int) Math.round(localY / height * boardBounds.height);
+        int symbolInset = Math.max(2, (int) Math.ceil(13 * displayScale));
+        x = Math.max(boardBounds.x + symbolInset, Math.min(boardBounds.x + boardBounds.width - symbolInset, x));
+        y = Math.max(boardBounds.y + symbolInset, Math.min(boardBounds.y + boardBounds.height - symbolInset, y));
+        int fiducialRadius = Math.max(2, (int) Math.round(10 * displayScale));
+        int symbolRadius = Math.max(2, (int) Math.round(13 * displayScale));
         boolean placed = job.retrievePlacedStatus(boardLocation, placement.getId());
         Color color = placed ? PLACED : (placement.getType() == Placement.Type.Fiducial ? FIDUCIAL
                 : placement.getType() == Placement.Type.Dispense ? DISPENSE : PLACEMENT);
         g2.setColor(color);
         if (placement.getType() == Placement.Type.Fiducial) {
-            g2.fillOval(x - 10, y - 10, 21, 21);
+            g2.fillOval(x - fiducialRadius, y - fiducialRadius,
+                    fiducialRadius * 2 + 1, fiducialRadius * 2 + 1);
         }
         else if (placement.getType() == Placement.Type.Dispense) {
-            g2.setStroke(new BasicStroke(2.8f));
-            g2.drawOval(x - 13, y - 13, 26, 26);
+            g2.setStroke(new BasicStroke(Math.max(1f, (float) (2.8 * displayScale))));
+            g2.drawOval(x - symbolRadius, y - symbolRadius, symbolRadius * 2, symbolRadius * 2);
             g2.setStroke(new BasicStroke(1.5f));
         }
         else if (placement.getType() == Placement.Type.Placement) {
-            g2.setStroke(new BasicStroke(3.0f));
-            g2.drawLine(x - 13, y - 13, x + 13, y + 13);
-            g2.drawLine(x + 13, y - 13, x - 13, y + 13);
+            g2.setStroke(new BasicStroke(Math.max(1f, (float) (3.0 * displayScale))));
+            g2.drawLine(x - symbolRadius, y - symbolRadius, x + symbolRadius, y + symbolRadius);
+            g2.drawLine(x + symbolRadius, y - symbolRadius, x - symbolRadius, y + symbolRadius);
             g2.setStroke(new BasicStroke(1.5f));
         }
     }
@@ -610,10 +621,17 @@ public class OperatorRuntimeCanvas extends JPanel {
     private static class Bounds {
         private final List<Double> columns = new ArrayList<>();
         private final List<Double> rows = new ArrayList<>();
-        private final int left;
-        private final int top;
+        private final double left;
+        private final double top;
+        private final int boardWidth;
+        private final int boardHeight;
+        private final double horizontalStep;
+        private final double verticalStep;
+        private final Rectangle content;
+        final double scale;
 
         Bounds(List<? extends PlacementsHolderLocation<?>> boards, Rectangle area) {
+            content = new Rectangle(area);
             for (PlacementsHolderLocation<?> board : boards) {
                 Location location = board.getGlobalLocation();
                 columns.add(location.getX());
@@ -623,18 +641,25 @@ public class OperatorRuntimeCanvas extends JPanel {
             rows.sort(Comparator.reverseOrder());
             removeDuplicates(columns);
             removeDuplicates(rows);
-            int width = BOARD_WIDTH + (columns.size() - 1) * (BOARD_WIDTH + BOARD_GAP);
-            int height = BOARD_HEIGHT + (rows.size() - 1) * (BOARD_HEIGHT + BOARD_GAP);
-            left = area.x + (area.width - width) / 2 + BOARD_WIDTH / 2;
-            top = area.y + (area.height - height) / 2 + BOARD_HEIGHT / 2;
+            double preferredWidth = BOARD_WIDTH + (columns.size() - 1) * (BOARD_WIDTH + BOARD_GAP);
+            double preferredHeight = BOARD_HEIGHT + (rows.size() - 1) * (BOARD_HEIGHT + BOARD_GAP);
+            scale = Math.min(1.0, Math.min(area.width / preferredWidth, area.height / preferredHeight));
+            boardWidth = Math.max(1, (int) Math.floor(BOARD_WIDTH * scale));
+            boardHeight = Math.max(1, (int) Math.floor(BOARD_HEIGHT * scale));
+            horizontalStep = (BOARD_WIDTH + BOARD_GAP) * scale;
+            verticalStep = (BOARD_HEIGHT + BOARD_GAP) * scale;
+            double width = boardWidth + (columns.size() - 1) * horizontalStep;
+            double height = boardHeight + (rows.size() - 1) * verticalStep;
+            left = area.x + (area.width - width) / 2;
+            top = area.y + (area.height - height) / 2;
         }
 
-        int x(PlacementsHolderLocation<?> board) {
-            return left + nearest(columns, board.getGlobalLocation().getX()) * (BOARD_WIDTH + BOARD_GAP);
-        }
-
-        int y(PlacementsHolderLocation<?> board) {
-            return top + nearest(rows, board.getGlobalLocation().getY()) * (BOARD_HEIGHT + BOARD_GAP);
+        Rectangle rectangle(PlacementsHolderLocation<?> board) {
+            int x = (int) Math.round(left + nearest(columns, board.getGlobalLocation().getX()) * horizontalStep);
+            int y = (int) Math.round(top + nearest(rows, board.getGlobalLocation().getY()) * verticalStep);
+            x = Math.max(content.x, Math.min(content.x + content.width - boardWidth, x));
+            y = Math.max(content.y, Math.min(content.y + content.height - boardHeight, y));
+            return new Rectangle(x, y, boardWidth, boardHeight);
         }
 
         private static void removeDuplicates(List<Double> values) {
