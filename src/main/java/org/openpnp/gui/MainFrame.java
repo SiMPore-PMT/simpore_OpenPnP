@@ -84,6 +84,7 @@ import javax.swing.undo.UndoManager;
 import org.openpnp.Main;
 import org.openpnp.Translations;
 import org.openpnp.gui.components.CameraPanel;
+import org.openpnp.gui.operator.OperatorPanel;
 import org.openpnp.gui.components.ThemeDialog;
 import org.openpnp.gui.importer.BoardImporter;
 import org.openpnp.gui.support.AbstractConfigurationWizard;
@@ -146,6 +147,7 @@ public class MainFrame extends JFrame {
     private static final int MINIMUM_WINDOW_SIZE = 50;
 
     private final Configuration configuration;
+    private final AccessLevel accessLevel;
 
     private static MainFrame mainFrame;
 
@@ -292,8 +294,13 @@ public class MainFrame extends JFrame {
     }
 
     public MainFrame(Configuration configuration) {
+        this(configuration, AccessLevel.ADMINISTRATOR);
+    }
+
+    public MainFrame(Configuration configuration, AccessLevel accessLevel) {
         mainFrame = this;
         this.configuration = configuration;
+        this.accessLevel = accessLevel;
         LengthCellValue.setConfiguration(configuration);
         RotationCellValue.setConfiguration(configuration);
         HeadCellValue.setConfiguration(configuration);
@@ -717,7 +724,12 @@ public class MainFrame extends JFrame {
             });
 
         tabs = new JTabbedPane(JTabbedPane.TOP);
-        splitPaneMachineAndTabs.setRightComponent(tabs);
+        if (accessLevel == AccessLevel.OPERATOR) {
+            splitPaneMachineAndTabs.setRightComponent(new OperatorPanel(this, jobPanel));
+        }
+        else {
+            splitPaneMachineAndTabs.setRightComponent(tabs);
+        }
 
         splitPaneMachineAndTabs
                 .setDividerLocation(prefs.getInt(PREF_DIVIDER_POSITION, PREF_DIVIDER_POSITION_DEF));
@@ -730,6 +742,7 @@ public class MainFrame extends JFrame {
                     }
                 });
 
+        if (accessLevel == AccessLevel.ADMINISTRATOR) {
         tabs.addTab(Translations.getString("MainFrame.RightComponent.tabs.Job"), //$NON-NLS-1$
                 null, jobPanel, null);
         tabs.addTab(Translations.getString("MainFrame.RightComponent.tabs.Panels"), //$NON-NLS-1$
@@ -758,6 +771,7 @@ public class MainFrame extends JFrame {
             public void stateChanged(ChangeEvent e) {
                 updateMenuState(tabs.getSelectedComponent());
             }});
+        }
         
         panelStatusAndDros = new JPanel();
         panelStatusAndDros.setBorder(null);
@@ -808,7 +822,9 @@ public class MainFrame extends JFrame {
 
         splitPaneMachineAndTabs.setResizeWeight(0.1);
 
-        addImporterMenuOptions();
+        if (accessLevel == AccessLevel.ADMINISTRATOR) {
+            addImporterMenuOptions();
+        }
 
         addComponentListener(mainFrameListener);
         
@@ -843,7 +859,9 @@ public class MainFrame extends JFrame {
 	            }
 	        }
 	    }
-        splitWindows();
+        if (accessLevel == AccessLevel.ADMINISTRATOR) {
+            splitWindows();
+        }
     }
 
     // 20161222 - ldpgh/lutz_dd
