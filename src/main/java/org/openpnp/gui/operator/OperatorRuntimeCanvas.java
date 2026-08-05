@@ -12,6 +12,7 @@ import java.awt.Toolkit;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -22,8 +23,10 @@ import javax.swing.UIManager;
 import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder;
 import org.openpnp.machine.reference.feeder.ReferenceTrayFeeder;
 import org.openpnp.model.Configuration;
+import org.openpnp.model.BoardLocation;
 import org.openpnp.model.Job;
 import org.openpnp.model.Location;
+import org.openpnp.model.PanelLocation;
 import org.openpnp.model.Placement;
 import org.openpnp.model.PlacementsHolderLocation;
 import org.openpnp.spi.Feeder;
@@ -43,6 +46,7 @@ public class OperatorRuntimeCanvas extends JPanel {
                 int feedIndexBase0, int displayPosition);
         void resetTray(JEDEC_TrayFeeder feeder);
         void enableTray(JEDEC_TrayFeeder feeder);
+        void panelSelectionChanged();
     }
 
     private static final Color BACKGROUND = new Color(35, 39, 46);
@@ -73,6 +77,8 @@ public class OperatorRuntimeCanvas extends JPanel {
     private final List<BoardHit> boardHits = new ArrayList<>();
     private final List<TrayPocketHit> trayPocketHits = new ArrayList<>();
     private final List<TrayActionHit> trayActionHits = new ArrayList<>();
+    private final List<PanelQuadrantHit> panelQuadrantHits = new ArrayList<>();
+    private PanelQuadrant selectedPanelQuadrant;
     private Rectangle dragRectangle;
     private int dragStartX;
     private int dragStartY;
@@ -85,6 +91,11 @@ public class OperatorRuntimeCanvas extends JPanel {
             public void mousePressed(MouseEvent e) {
                 if (e.isPopupTrigger()) {
                     showPopup(e);
+                    return;
+                }
+                PanelQuadrantHit quadrantHit = findPanelQuadrant(e.getX(), e.getY());
+                if (quadrantHit != null) {
+                    selectPanelQuadrant(quadrantHit.slot.quadrant);
                     return;
                 }
                 TrayActionHit actionHit = findTrayAction(e.getX(), e.getY());
@@ -162,6 +173,7 @@ public class OperatorRuntimeCanvas extends JPanel {
     public void setJob(Job job) {
         this.job = job;
         selectedBoards.clear();
+        selectedPanelQuadrant = null;
         repaint();
     }
 
@@ -182,6 +194,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         boardHits.clear();
         trayPocketHits.clear();
         trayActionHits.clear();
+        panelQuadrantHits.clear();
         Graphics2D g2 = (Graphics2D) g.create();
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -381,11 +394,24 @@ public class OperatorRuntimeCanvas extends JPanel {
             g2.drawString("No job loaded", getWidth() / 2 - 42, getHeight() / 3 + 38);
             return;
         }
+
+        List<PanelSlot> slots = getPanelSlots(job);
+        PanelSlot selectedSlot = getSelectedPanelSlot(slots);
+        List<PlacementsHolderLocation<?>> visibleBoards = getVisibleBoardLocations(selectedSlot);
+        if (visibleBoards.isEmpty()) {
+            return;
+        }
+
         List<Location> locations = new ArrayList<>();
-        for (PlacementsHolderLocation<?> boardLocation : job.getBoardLocations()) {
+        for (PlacementsHolderLocation<?> boardLocation : visibleBoards) {
+            if (!boardLocation.isEnabled()) {
+                continue;
+            }
             locations.add(boardLocation.getGlobalLocation());
             for (Placement placement : boardLocation.getPlacementsHolder().getPlacements()) {
-                locations.add(boardLocation.getGlobalLocation().add(placement.getLocation()));
+                if (placement.isEnabled()) {
+                    locations.add(boardLocation.getGlobalLocation().add(placement.getLocation()));
+                }
             }
         }
         if (locations.isEmpty()) {
@@ -393,25 +419,38 @@ public class OperatorRuntimeCanvas extends JPanel {
         }
         Bounds bounds = new Bounds(locations);
         int trayColumnWidth = Math.min(300, Math.max(230, getWidth() / 3));
-        Rectangle area = new Rectangle(trayColumnWidth + 16, TOOL_HEIGHT, getWidth() - trayColumnWidth - 34,
-                getHeight() - TOOL_HEIGHT - 22);
+        Rectangle area = new Rectangle(trayColumnWidth + 16, 46, getWidth() - trayColumnWidth - 34, getHeight() - 60);
+        g2.setColor(TEXT);
+        g2.drawString("Job Layout" + (selectedSlot == null || populatedPanelSlotCount(slots) <= 1 ? "" : " • " + selectedSlot.quadrant.label), area.x, area.y - 10);
         g2.setColor(SECTION);
         g2.fillRoundRect(area.x, area.y, area.width, area.height, 14, 14);
         g2.setColor(BORDER);
         g2.drawRoundRect(area.x, area.y, area.width, area.height, 14, 14);
-        g2.setColor(TEXT);
-        g2.drawString("Job Layout", area.x + 12, area.y + 18);
-        for (PlacementsHolderLocation<?> boardLocation : job.getBoardLocations()) {
-            drawBoard(g2, bounds, area, boardLocation);
+        boolean showPanelSelector = populatedPanelSlotCount(slots) > 1;
+        if (showPanelSelector) {
+            drawPanelSelector(g2, area, slots);
         }
+        Rectangle contentArea = showPanelSelector
+                ? new Rectangle(area.x, area.y + 96, area.width, Math.max(1, area.height - 96))
+                : area;
+        List<PlacementsHolderLocation<?>> drawnBoards = new ArrayList<>();
+        for (PlacementsHolderLocation<?> boardLocation : visibleBoards) {
+            if (drawBoard(g2, bounds, contentArea, boardLocation)) {
+                drawnBoards.add(boardLocation);
+            }
+        }
+        pruneHiddenSelection(drawnBoards);
     }
 
-    private void drawBoard(Graphics2D g2, Bounds bounds, Rectangle area, PlacementsHolderLocation<?> boardLocation) {
+    private boolean drawBoard(Graphics2D g2, Bounds bounds, Rectangle area, PlacementsHolderLocation<?> boardLocation) {
         Location bl = boardLocation.getGlobalLocation();
         int bx = bounds.x(bl, area);
         int by = bounds.y(bl, area);
         Rectangle boardBounds = new Rectangle(bx - BOARD_WIDTH / 2, by - BOARD_HEIGHT / 2, BOARD_WIDTH, BOARD_HEIGHT);
         boolean enabled = boardLocation.isEnabled();
+        if (!enabled) {
+            return false;
+        }
         boolean selected = selectedBoards.contains(boardLocation);
         g2.setColor(enabled ? BOARD_FILL : BOARD_DISABLED);
         g2.fillRoundRect(boardBounds.x, boardBounds.y, boardBounds.width, boardBounds.height, 10, 10);
@@ -430,6 +469,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         for (Placement placement : boardLocation.getPlacementsHolder().getPlacements()) {
             drawPlacement(g2, bounds, area, boardLocation, placement, enabled);
         }
+        return true;
     }
 
     private void drawPlacement(Graphics2D g2, Bounds bounds, Rectangle area, PlacementsHolderLocation<?> boardLocation,
@@ -443,6 +483,9 @@ public class OperatorRuntimeCanvas extends JPanel {
         boolean placed = job.retrievePlacedStatus(boardLocation, placement.getId());
         Color color = placed ? PLACED : (placement.getType() == Placement.Type.Fiducial ? FIDUCIAL
                 : placement.getType() == Placement.Type.Dispense ? DISPENSE : PLACEMENT);
+        if (!boardEnabled || !placementEnabled) {
+            return;
+        }
         g2.setColor(color);
         if (placement.getType() == Placement.Type.Fiducial) {
             g2.fillOval(x - 10, y - 10, 21, 21);
@@ -458,6 +501,187 @@ public class OperatorRuntimeCanvas extends JPanel {
             g2.drawLine(x + 13, y - 13, x - 13, y + 13);
             g2.setStroke(new BasicStroke(1.5f));
         }
+    }
+
+
+    private void drawPanelSelector(Graphics2D g2, Rectangle area, List<PanelSlot> slots) {
+        int cardWidth = 122;
+        int cardHeight = 76;
+        int x = area.x + area.width - cardWidth - 14;
+        int y = area.y + 12;
+        g2.setColor(new Color(40, 46, 55, 235));
+        g2.fillRoundRect(x, y, cardWidth, cardHeight, 14, 14);
+        g2.setColor(new Color(120, 135, 155));
+        g2.drawRoundRect(x, y, cardWidth, cardHeight, 14, 14);
+        int cellW = 48;
+        int cellH = 24;
+        int gap = 6;
+        int gridX = x + 11;
+        int gridY = y + 12;
+        for (PanelSlot slot : slots) {
+            int col = slot.quadrant.right ? 1 : 0;
+            int row = slot.quadrant.top ? 0 : 1;
+            Rectangle cell = new Rectangle(gridX + col * (cellW + gap), gridY + row * (cellH + gap), cellW, cellH);
+            boolean selected = slot.quadrant == selectedPanelQuadrant;
+            boolean populated = slot.location != null;
+            g2.setColor(selected ? new Color(38, 120, 210, 170)
+                    : populated ? new Color(72, 86, 104, 220) : new Color(58, 63, 72, 150));
+            g2.fillRoundRect(cell.x, cell.y, cell.width, cell.height, 8, 8);
+            g2.setColor(selected ? PLACED : populated ? BOARD_BORDER : new Color(100, 108, 118));
+            g2.drawRoundRect(cell.x, cell.y, cell.width, cell.height, 8, 8);
+            g2.setColor(populated ? TEXT : MUTED_TEXT);
+            g2.drawString(slot.quadrant.shortName, cell.x + 15, cell.y + 16);
+            if (populated) {
+                panelQuadrantHits.add(new PanelQuadrantHit(slot, cell));
+            }
+        }
+        g2.setColor(MUTED_TEXT);
+        g2.drawString("Panels", x + 42, y + cardHeight - 8);
+    }
+
+    private List<PanelSlot> getPanelSlots(Job job) {
+        List<PlacementsHolderLocation<?>> candidates = getPanelCandidates(job);
+        double centerX = 0;
+        double centerY = 0;
+        for (PlacementsHolderLocation<?> candidate : candidates) {
+            Location location = candidate.getGlobalLocation();
+            centerX += location.getX();
+            centerY += location.getY();
+        }
+        if (!candidates.isEmpty()) {
+            centerX /= candidates.size();
+            centerY /= candidates.size();
+        }
+        EnumMap<PanelQuadrant, PanelSlot> byQuadrant = new EnumMap<>(PanelQuadrant.class);
+        for (PanelQuadrant quadrant : PanelQuadrant.values()) {
+            byQuadrant.put(quadrant, new PanelSlot(quadrant, null));
+        }
+        for (PlacementsHolderLocation<?> candidate : candidates) {
+            PanelQuadrant quadrant = classifyQuadrant(candidate.getGlobalLocation(), centerX, centerY);
+            PanelSlot current = byQuadrant.get(quadrant);
+            if (current.location == null || quadrantScore(candidate.getGlobalLocation(), centerX, centerY, quadrant) >
+                    quadrantScore(current.location.getGlobalLocation(), centerX, centerY, quadrant)) {
+                byQuadrant.put(quadrant, new PanelSlot(quadrant, candidate));
+            }
+        }
+        List<PanelSlot> slots = new ArrayList<>();
+        for (PanelQuadrant quadrant : PanelQuadrant.selectionOrder()) {
+            slots.add(byQuadrant.get(quadrant));
+        }
+        return slots;
+    }
+
+
+    private int populatedPanelSlotCount(List<PanelSlot> slots) {
+        int count = 0;
+        for (PanelSlot slot : slots) {
+            if (slot.location != null) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private List<PlacementsHolderLocation<?>> getPanelCandidates(Job job) {
+        List<PlacementsHolderLocation<?>> children = job.getRootPanelLocation().getChildren();
+        if (!children.isEmpty()) {
+            return new ArrayList<>(children);
+        }
+        LinkedHashSet<PlacementsHolderLocation<?>> roots = new LinkedHashSet<>();
+        for (PlacementsHolderLocation<?> boardLocation : job.getBoardLocations()) {
+            roots.add(findPanelRoot(job, boardLocation));
+        }
+        return new ArrayList<>(roots);
+    }
+
+    private PlacementsHolderLocation<?> findPanelRoot(Job job, PlacementsHolderLocation<?> location) {
+        PlacementsHolderLocation<?> root = location;
+        PanelLocation jobRoot = job.getRootPanelLocation();
+        while (root.getParent() != null && root.getParent() != jobRoot) {
+            root = root.getParent();
+        }
+        return root;
+    }
+
+    private PanelSlot getSelectedPanelSlot(List<PanelSlot> slots) {
+        PanelSlot fallback = null;
+        for (PanelSlot slot : slots) {
+            if (slot.location == null) {
+                continue;
+            }
+            if (fallback == null) {
+                fallback = slot;
+            }
+            if (slot.quadrant == selectedPanelQuadrant) {
+                return slot;
+            }
+        }
+        if (fallback != null && selectedPanelQuadrant != fallback.quadrant) {
+            selectedPanelQuadrant = fallback.quadrant;
+        }
+        return fallback;
+    }
+
+    private List<PlacementsHolderLocation<?>> getVisibleBoardLocations(PanelSlot selectedSlot) {
+        List<PlacementsHolderLocation<?>> boards = new ArrayList<>();
+        if (selectedSlot == null || selectedSlot.location == null) {
+            return boards;
+        }
+        collectBoardLocations(selectedSlot.location, boards);
+        return boards;
+    }
+
+    private void collectBoardLocations(PlacementsHolderLocation<?> location, List<PlacementsHolderLocation<?>> boards) {
+        if (location instanceof BoardLocation) {
+            boards.add(location);
+        }
+        else if (location instanceof PanelLocation) {
+            for (PlacementsHolderLocation<?> child : ((PanelLocation) location).getChildren()) {
+                collectBoardLocations(child, boards);
+            }
+        }
+    }
+
+    private PanelQuadrant classifyQuadrant(Location location, double centerX, double centerY) {
+        boolean right = location.getX() > centerX;
+        boolean top = location.getY() > centerY;
+        if (top && right) {
+            return PanelQuadrant.TOP_RIGHT;
+        }
+        if (top) {
+            return PanelQuadrant.TOP_LEFT;
+        }
+        if (right) {
+            return PanelQuadrant.BOTTOM_RIGHT;
+        }
+        return PanelQuadrant.BOTTOM_LEFT;
+    }
+
+    private double quadrantScore(Location location, double centerX, double centerY, PanelQuadrant quadrant) {
+        double dx = quadrant.right ? location.getX() - centerX : centerX - location.getX();
+        double dy = quadrant.top ? location.getY() - centerY : centerY - location.getY();
+        return dx + dy;
+    }
+
+    private void selectPanelQuadrant(PanelQuadrant quadrant) {
+        if (quadrant == selectedPanelQuadrant) {
+            return;
+        }
+        selectedPanelQuadrant = quadrant;
+        selectedBoards.clear();
+        dragRectangle = null;
+        if (listener != null) {
+            listener.boardSelectionChanged(getSelectedBoards());
+            listener.panelSelectionChanged();
+        }
+        repaint();
+    }
+
+    private void pruneHiddenSelection(List<PlacementsHolderLocation<?>> visibleBoards) {
+        if (!selectedBoards.retainAll(new LinkedHashSet<>(visibleBoards)) || listener == null) {
+            return;
+        }
+        listener.boardSelectionChanged(getSelectedBoards());
     }
 
     private void drawDragSelection(Graphics2D g2) {
@@ -533,6 +757,15 @@ public class OperatorRuntimeCanvas extends JPanel {
         return null;
     }
 
+    private PanelQuadrantHit findPanelQuadrant(int x, int y) {
+        for (PanelQuadrantHit hit : panelQuadrantHits) {
+            if (hit.bounds.contains(x, y)) {
+                return hit;
+            }
+        }
+        return null;
+    }
+
     private TrayActionHit findTrayAction(int x, int y) {
         for (TrayActionHit hit : trayActionHits) {
             if (hit.bounds.contains(x, y)) {
@@ -558,6 +791,48 @@ public class OperatorRuntimeCanvas extends JPanel {
 
     private Rectangle normalizedRectangle(int x1, int y1, int x2, int y2) {
         return new Rectangle(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x1 - x2), Math.abs(y1 - y2));
+    }
+
+
+    private enum PanelQuadrant {
+        BOTTOM_LEFT("BL", "Bottom Left", false, false),
+        BOTTOM_RIGHT("BR", "Bottom Right", true, false),
+        TOP_LEFT("TL", "Top Left", false, true),
+        TOP_RIGHT("TR", "Top Right", true, true);
+
+        final String shortName;
+        final String label;
+        final boolean right;
+        final boolean top;
+
+        PanelQuadrant(String shortName, String label, boolean right, boolean top) {
+            this.shortName = shortName;
+            this.label = label;
+            this.right = right;
+            this.top = top;
+        }
+
+        static PanelQuadrant[] selectionOrder() {
+            return new PanelQuadrant[] { BOTTOM_LEFT, BOTTOM_RIGHT, TOP_LEFT, TOP_RIGHT };
+        }
+    }
+
+    private static class PanelSlot {
+        final PanelQuadrant quadrant;
+        final PlacementsHolderLocation<?> location;
+        PanelSlot(PanelQuadrant quadrant, PlacementsHolderLocation<?> location) {
+            this.quadrant = quadrant;
+            this.location = location;
+        }
+    }
+
+    private static class PanelQuadrantHit {
+        final PanelSlot slot;
+        final Rectangle bounds;
+        PanelQuadrantHit(PanelSlot slot, Rectangle bounds) {
+            this.slot = slot;
+            this.bounds = bounds;
+        }
     }
 
     private static class BoardHit {
