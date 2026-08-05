@@ -7,6 +7,7 @@ import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
+import java.awt.RenderingHints;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,12 +26,23 @@ import org.openpnp.spi.Nozzle;
 
 @SuppressWarnings("serial")
 public class OperatorRuntimeCanvas extends JPanel {
+    private static final Color BACKGROUND = new Color(250, 250, 250);
+    private static final Color SECTION = new Color(245, 247, 250);
+    private static final Color BORDER = new Color(190, 198, 208);
+    private static final Color TRAY_AVAILABLE = new Color(104, 171, 224);
+    private static final Color TRAY_USED = new Color(178, 182, 188);
+    private static final Color BOARD_FILL = new Color(232, 238, 248);
+    private static final Color BOARD_BORDER = new Color(67, 92, 135);
+    private static final Color PLACEMENT = new Color(174, 54, 54);
+    private static final Color FIDUCIAL = new Color(44, 150, 82);
+    private static final Color DISPENSE = new Color(210, 132, 34);
+
     private Job job;
     private HeadMountable selectedTool;
 
     public OperatorRuntimeCanvas() {
         setPreferredSize(new Dimension(500, 360));
-        setBackground(Color.WHITE);
+        setBackground(BACKGROUND);
     }
 
     public void setJob(Job job) {
@@ -48,6 +60,8 @@ public class OperatorRuntimeCanvas extends JPanel {
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g.create();
         try {
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             g2.setStroke(new BasicStroke(1.5f));
             drawTool(g2);
             drawFeeders(g2);
@@ -67,8 +81,12 @@ public class OperatorRuntimeCanvas extends JPanel {
                     (lower.contains("dispense") || lower.contains("needle") || lower.contains("glue") ? "Dispense" : "Tool");
             text = type + ": " + name;
         }
-        g2.setColor(new Color(0, 110, 0));
-        g2.drawString(text, 12, 18);
+        g2.setColor(SECTION);
+        g2.fillRoundRect(10, 8, Math.min(getWidth() - 20, 300), 26, 10, 10);
+        g2.setColor(BORDER);
+        g2.drawRoundRect(10, 8, Math.min(getWidth() - 20, 300), 26, 10, 10);
+        g2.setColor(FIDUCIAL.darker());
+        g2.drawString(text, 22, 26);
     }
 
     private void drawFeeders(Graphics2D g2) {
@@ -76,7 +94,9 @@ public class OperatorRuntimeCanvas extends JPanel {
             return;
         }
         int x = 12;
-        int y = 32;
+        int y = 50;
+        g2.setColor(Color.DARK_GRAY);
+        g2.drawString("Tray Feeders", x, y - 10);
         for (Feeder feeder : Configuration.get().getMachine().getFeeders()) {
             int rows = 0;
             int cols = 0;
@@ -102,8 +122,10 @@ public class OperatorRuntimeCanvas extends JPanel {
             for (int row = 0; row < rows; row++) {
                 for (int col = 0; col < cols; col++) {
                     int index = row * cols + col;
-                    g2.setColor(index < feedCount ? new Color(180, 180, 180) : new Color(120, 190, 255));
-                    g2.fillRect(x + col * cell, y + 18 + row * cell, cell - 1, cell - 1);
+                    g2.setColor(index < feedCount ? TRAY_USED : TRAY_AVAILABLE);
+                    g2.fillRoundRect(x + col * cell, y + 18 + row * cell, cell - 2, cell - 2, 3, 3);
+                    g2.setColor(new Color(255, 255, 255, 120));
+                    g2.drawRoundRect(x + col * cell, y + 18 + row * cell, cell - 2, cell - 2, 3, 3);
                 }
             }
             y += 30 + rows * cell;
@@ -115,8 +137,12 @@ public class OperatorRuntimeCanvas extends JPanel {
 
     private void drawJob(Graphics2D g2) {
         if (job == null) {
+            g2.setColor(SECTION);
+            g2.fillRoundRect(getWidth() / 3, getHeight() / 3, getWidth() / 3, 70, 16, 16);
+            g2.setColor(BORDER);
+            g2.drawRoundRect(getWidth() / 3, getHeight() / 3, getWidth() / 3, 70, 16, 16);
             g2.setColor(Color.GRAY);
-            g2.drawString("No job loaded", getWidth() / 2 - 40, getHeight() / 2);
+            g2.drawString("No job loaded", getWidth() / 2 - 42, getHeight() / 3 + 38);
             return;
         }
         List<Location> locations = new ArrayList<>();
@@ -130,31 +156,35 @@ public class OperatorRuntimeCanvas extends JPanel {
             return;
         }
         Bounds bounds = new Bounds(locations);
-        Rectangle area = new Rectangle(getWidth() / 3, 35, getWidth() * 2 / 3 - 16, getHeight() - 50);
-        g2.setColor(new Color(0, 140, 0));
-        g2.drawRect(area.x, area.y, area.width, area.height);
+        Rectangle area = new Rectangle(getWidth() / 3, 50, getWidth() * 2 / 3 - 20, getHeight() - 74);
+        g2.setColor(Color.DARK_GRAY);
+        g2.drawString("Job Layout", area.x, area.y - 10);
+        g2.setColor(SECTION);
+        g2.fillRoundRect(area.x, area.y, area.width, area.height, 14, 14);
+        g2.setColor(BORDER);
+        g2.drawRoundRect(area.x, area.y, area.width, area.height, 14, 14);
         for (PlacementsHolderLocation<?> boardLocation : job.getBoardLocations()) {
             Location bl = boardLocation.getGlobalLocation();
             int bx = bounds.x(bl, area);
             int by = bounds.y(bl, area);
-            g2.setColor(new Color(230, 230, 250));
-            g2.fillRoundRect(bx - 18, by - 12, 36, 24, 10, 10);
-            g2.setColor(Color.BLUE.darker());
-            g2.drawRoundRect(bx - 18, by - 12, 36, 24, 10, 10);
+            g2.setColor(BOARD_FILL);
+            g2.fillRoundRect(bx - 20, by - 14, 40, 28, 10, 10);
+            g2.setColor(BOARD_BORDER);
+            g2.drawRoundRect(bx - 20, by - 14, 40, 28, 10, 10);
             for (Placement placement : boardLocation.getPlacementsHolder().getPlacements()) {
                 Location p = bl.add(placement.getLocation());
                 int x = bounds.x(p, area);
                 int y = bounds.y(p, area);
                 if (placement.getType() == Placement.Type.Fiducial) {
-                    g2.setColor(new Color(0, 160, 0));
+                    g2.setColor(FIDUCIAL);
                     g2.fillOval(x - 3, y - 3, 6, 6);
                 }
                 else if (placement.getType() == Placement.Type.Dispense) {
-                    g2.setColor(Color.ORANGE.darker());
+                    g2.setColor(DISPENSE);
                     g2.drawOval(x - 4, y - 4, 8, 8);
                 }
                 else if (placement.getType() == Placement.Type.Placement) {
-                    g2.setColor(Color.RED.darker());
+                    g2.setColor(PLACEMENT);
                     g2.drawLine(x - 4, y - 4, x + 4, y + 4);
                     g2.drawLine(x + 4, y - 4, x - 4, y + 4);
                 }
@@ -174,7 +204,11 @@ public class OperatorRuntimeCanvas extends JPanel {
                 maxY = Math.max(maxY, l.getY());
             }
         }
-        int x(Location l, Rectangle r) { return r.x + 20 + (int) ((l.getX() - minX) / Math.max(1, maxX - minX) * (r.width - 40)); }
-        int y(Location l, Rectangle r) { return r.y + 20 + (int) ((l.getY() - minY) / Math.max(1, maxY - minY) * (r.height - 40)); }
+        int x(Location l, Rectangle r) {
+            return r.x + 24 + (int) ((l.getX() - minX) / Math.max(1, maxX - minX) * (r.width - 48));
+        }
+        int y(Location l, Rectangle r) {
+            return r.y + 24 + (int) ((l.getY() - minY) / Math.max(1, maxY - minY) * (r.height - 48));
+        }
     }
 }
