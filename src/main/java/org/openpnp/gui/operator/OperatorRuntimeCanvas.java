@@ -4,6 +4,7 @@ import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
@@ -11,6 +12,8 @@ import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.font.GlyphVector;
+import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -359,17 +362,30 @@ public class OperatorRuntimeCanvas extends JPanel {
         g2.setColor(enabled ? BORDER : new Color(210, 120, 70));
         g2.drawOval(bounds.x, bounds.y, bounds.width, bounds.height);
         g2.setColor(enabled ? TEXT : new Color(255, 185, 130));
-        g2.drawString("↻", bounds.x + 8, bounds.y + 19);
+        Font originalFont = g2.getFont();
+        Font iconFont = originalFont.deriveFont(Font.BOLD, 24f);
+        GlyphVector glyph = iconFont.createGlyphVector(g2.getFontRenderContext(), "↻");
+        Rectangle2D visualBounds = glyph.getVisualBounds();
+        float iconX = (float) (bounds.getCenterX() - visualBounds.getCenterX());
+        float iconY = (float) (bounds.getCenterY() - visualBounds.getCenterY());
+        g2.drawGlyphVector(glyph, iconX, iconY);
+        g2.setFont(originalFont);
     }
 
     private void drawEnableToggle(Graphics2D g2, Rectangle bounds, boolean enabled) {
-        int cy = bounds.y + bounds.height / 2;
+        int centerX = bounds.x + 7;
+        int centerY = bounds.y + bounds.height / 2;
+        int outerRadius = 7;
+        int innerRadius = 3;
         g2.setColor(TEXT);
-        g2.drawOval(bounds.x, cy - 6, 12, 12);
+        g2.drawOval(centerX - outerRadius, centerY - outerRadius,
+                outerRadius * 2, outerRadius * 2);
         if (enabled) {
-            g2.fillOval(bounds.x + 3, cy - 3, 6, 6);
+            g2.fillOval(centerX - innerRadius, centerY - innerRadius,
+                    innerRadius * 2, innerRadius * 2);
         }
-        g2.drawString(enabled ? "Enabled" : "Disabled", bounds.x + 18, bounds.y + 14);
+        g2.drawString(enabled ? "Enabled" : "Disabled",
+                centerX + outerRadius + 5, bounds.y + 14);
     }
 
     private int drawReferenceTray(Graphics2D g2, ReferenceTrayFeeder tray, int x, int y) {
