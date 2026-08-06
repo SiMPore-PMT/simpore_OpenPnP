@@ -13,6 +13,8 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.io.FilenameFilter;
@@ -89,7 +91,7 @@ public class OperatorPanel extends JPanel {
             "Pause or resume the current job");
     private final JButton stopButton = createActionButton("Stop", Icons.stop, "Stop the current job");
     private final JButton resetBoardButton = createActionButton("Reset Job", Icons.refresh,
-            "Reset the loaded job and tray feeder counts for a fresh run");
+            "Left click: reset job and trays. Right click: reset boards and placements while preserving trays.");
     private final JButton modifyLastRunButton = createActionButton("Modify Last Run", Icons.board,
             "Open the existing Job editor for the loaded job");
     private final JButton openNewJobButton = createActionButton("Open New Job", Icons.add,
@@ -144,7 +146,30 @@ public class OperatorPanel extends JPanel {
 
         startNewJobButton.addActionListener(e -> openJob(true));
         openNewJobButton.addActionListener(e -> openJob(true));
-        resetBoardButton.addActionListener(e -> resetCurrentJob());
+        resetBoardButton.addActionListener(e -> resetCurrentJob(true));
+        resetBoardButton.addMouseListener(new MouseAdapter() {
+            private void showResetMenu(MouseEvent e) {
+                if (!e.isPopupTrigger() || !resetBoardButton.isEnabled()) {
+                    return;
+                }
+                JPopupMenu menu = new JPopupMenu();
+                JMenuItem keepTrayProgress = new JMenuItem("Reset Job — Keep Tray Progress");
+                keepTrayProgress.setToolTipText("Reset all boards and placements without changing tray progress.");
+                keepTrayProgress.addActionListener(event -> resetCurrentJob(false));
+                menu.add(keepTrayProgress);
+                menu.show(resetBoardButton, e.getX(), e.getY());
+            }
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                showResetMenu(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                showResetMenu(e);
+            }
+        });
         modifyLastRunButton.addActionListener(e -> showJobEditor());
         resetBoardsOnlyButton.addActionListener(e -> resetBoardsOnly());
         globalDispenseToggle.addActionListener(e -> setGlobalDispenseEnabled(globalDispenseToggle.isSelected()));
@@ -489,10 +514,12 @@ public class OperatorPanel extends JPanel {
             File file = new File(new File(fileDialog.getDirectory()), fileDialog.getFile());
             jobPanel.loadJob(file);
             if (reset) {
-                resetCurrentJob();
+                resetCurrentJob(true);
             }
-            restoreTrayProgress();
-            refreshJobAndFeeders();
+            else {
+                restoreTrayProgress();
+                refreshJobAndFeeders();
+            }
         }
         catch (Exception e) {
             e.printStackTrace();
@@ -500,9 +527,11 @@ public class OperatorPanel extends JPanel {
         }
     }
 
-    private void resetCurrentJob() {
+    private void resetCurrentJob(boolean resetTrayProgress) {
         try {
-            OperatorJobReset.resetForFreshOperatorRun(jobPanel.getJob());
+            editingService.resetJob(jobPanel.getJob(), resetTrayProgress);
+            selectedBoards.clear();
+            canvas.clearSelection();
             refreshAndPersistView(false);
         }
         catch (Exception e) {

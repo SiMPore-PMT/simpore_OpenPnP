@@ -64,8 +64,8 @@ public class OperatorRuntimeCanvas extends JPanel {
     private static final Color SELECTED = new Color(38, 120, 210);
     private static final Color PLACEMENT = new Color(174, 54, 54);
     private static final Color PLACED = new Color(210, 158, 24);
-    private static final Color FIDUCIAL = new Color(44, 150, 82);
-    private static final Color DISPENSE = new Color(155, 105, 210);
+    private static final Color FIDUCIAL = new Color(155, 105, 210);
+    private static final Color DISPENSE = new Color(210, 132, 34);
     private static final int TOOL_HEIGHT = 96;
     private static final int BOARD_WIDTH = 108;
     private static final int BOARD_HEIGHT = 76;
@@ -176,9 +176,11 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     public void setJob(Job job) {
+        if (this.job != job) {
+            selectedBoards.clear();
+            selectedPanelQuadrant = null;
+        }
         this.job = job;
-        selectedBoards.clear();
-        selectedPanelQuadrant = null;
         repaint();
     }
 
@@ -396,72 +398,47 @@ public class OperatorRuntimeCanvas extends JPanel {
             g2.drawString("No job loaded", getWidth() / 2 - 42, getHeight() / 3 + 38);
             return;
         }
-        List<? extends PlacementsHolderLocation<?>> boards = job.getBoardLocations();
-        if (boards.isEmpty()) {
 
         List<PanelSlot> slots = getPanelSlots(job);
         PanelSlot selectedSlot = getSelectedPanelSlot(slots);
         List<PlacementsHolderLocation<?>> visibleBoards = getVisibleBoardLocations(selectedSlot);
         if (visibleBoards.isEmpty()) {
+            pruneHiddenSelection(visibleBoards);
             return;
         }
 
-        List<Location> locations = new ArrayList<>();
-        for (PlacementsHolderLocation<?> boardLocation : visibleBoards) {
-            if (!boardLocation.isEnabled()) {
-                continue;
-            }
-            locations.add(boardLocation.getGlobalLocation());
-            for (Placement placement : boardLocation.getPlacementsHolder().getPlacements()) {
-                if (placement.isEnabled()) {
-                    locations.add(boardLocation.getGlobalLocation().add(placement.getLocation()));
-                }
-            }
-        }
-        if (locations.isEmpty()) {
-            return;
-        }
         int trayColumnWidth = Math.min(300, Math.max(230, getWidth() / 3));
-        Rectangle area = new Rectangle(trayColumnWidth + 16, 46, getWidth() - trayColumnWidth - 34, getHeight() - 60);
+        Rectangle area = new Rectangle(trayColumnWidth + 16, 46,
+                getWidth() - trayColumnWidth - 34, getHeight() - 60);
         g2.setColor(TEXT);
-        g2.drawString("Job Layout" + (selectedSlot == null || populatedPanelSlotCount(slots) <= 1 ? "" : " • " + selectedSlot.quadrant.label), area.x, area.y - 10);
+        g2.drawString("Job Layout" + (selectedSlot == null || populatedPanelSlotCount(slots) <= 1
+                ? "" : " • " + selectedSlot.quadrant.label), area.x, area.y - 10);
         g2.setColor(SECTION);
         g2.fillRoundRect(area.x, area.y, area.width, area.height, 14, 14);
         g2.setColor(BORDER);
         g2.drawRoundRect(area.x, area.y, area.width, area.height, 14, 14);
-        g2.setColor(TEXT);
-        g2.drawString("Job Layout", area.x + 12, area.y + 18);
-        Rectangle content = new Rectangle(area.x + JOB_CONTENT_PADDING, area.y + JOB_HEADER_HEIGHT,
-                Math.max(0, area.width - JOB_CONTENT_PADDING * 2),
-                Math.max(0, area.height - JOB_HEADER_HEIGHT - JOB_CONTENT_PADDING));
-        Bounds bounds = new Bounds(boards, content);
-        for (PlacementsHolderLocation<?> boardLocation : boards) {
-            drawBoard(g2, bounds, boardLocation);
+
         boolean showPanelSelector = populatedPanelSlotCount(slots) > 1;
         if (showPanelSelector) {
             drawPanelSelector(g2, area, slots);
         }
-        Rectangle contentArea = showPanelSelector
-                ? new Rectangle(area.x, area.y + 96, area.width, Math.max(1, area.height - 96))
-                : area;
+        int headerHeight = showPanelSelector ? 96 : JOB_HEADER_HEIGHT;
+        Rectangle content = new Rectangle(area.x + JOB_CONTENT_PADDING, area.y + headerHeight,
+                Math.max(1, area.width - JOB_CONTENT_PADDING * 2),
+                Math.max(1, area.height - headerHeight - JOB_CONTENT_PADDING));
+        Bounds bounds = new Bounds(visibleBoards, content);
         List<PlacementsHolderLocation<?>> drawnBoards = new ArrayList<>();
         for (PlacementsHolderLocation<?> boardLocation : visibleBoards) {
-            if (drawBoard(g2, bounds, contentArea, boardLocation)) {
-                drawnBoards.add(boardLocation);
-            }
+            drawBoard(g2, bounds, boardLocation);
+            drawnBoards.add(boardLocation);
         }
         pruneHiddenSelection(drawnBoards);
     }
 
-    private boolean drawBoard(Graphics2D g2, Bounds bounds, Rectangle area, PlacementsHolderLocation<?> boardLocation) {
-        Location bl = boardLocation.getGlobalLocation();
-        int bx = bounds.x(bl, area);
-        int by = bounds.y(bl, area);
-        Rectangle boardBounds = new Rectangle(bx - BOARD_WIDTH / 2, by - BOARD_HEIGHT / 2, BOARD_WIDTH, BOARD_HEIGHT);
+    private void drawBoard(Graphics2D g2, Bounds bounds,
+            PlacementsHolderLocation<?> boardLocation) {
+        Rectangle boardBounds = bounds.rectangle(boardLocation);
         boolean enabled = boardLocation.isEnabled();
-        if (!enabled) {
-            return false;
-        }
         boolean selected = selectedBoards.contains(boardLocation);
         g2.setColor(enabled ? BOARD_FILL : BOARD_DISABLED);
         g2.fillRoundRect(boardBounds.x, boardBounds.y, boardBounds.width, boardBounds.height, 10, 10);
@@ -470,7 +447,8 @@ public class OperatorRuntimeCanvas extends JPanel {
         if (selected) {
             g2.setStroke(new BasicStroke(3f));
             g2.setColor(SELECTED);
-            g2.drawRoundRect(boardBounds.x - 4, boardBounds.y - 4, boardBounds.width + 8, boardBounds.height + 8, 12, 12);
+            g2.drawRoundRect(boardBounds.x - 4, boardBounds.y - 4,
+                    boardBounds.width + 8, boardBounds.height + 8, 12, 12);
             g2.setStroke(new BasicStroke(1.5f));
         }
         boardHits.add(new BoardHit(boardLocation, boardBounds));
@@ -478,9 +456,8 @@ public class OperatorRuntimeCanvas extends JPanel {
             return;
         }
         for (Placement placement : boardLocation.getPlacementsHolder().getPlacements()) {
-            drawPlacement(g2, boardBounds, bounds.scale, boardLocation, placement, enabled);
+            drawPlacement(g2, boardBounds, bounds.scale, boardLocation, placement, true);
         }
-        return true;
     }
 
     private void drawPlacement(Graphics2D g2, Rectangle boardBounds, double displayScale,
@@ -512,9 +489,6 @@ public class OperatorRuntimeCanvas extends JPanel {
         boolean placed = job.retrievePlacedStatus(boardLocation, placement.getId());
         Color color = placed ? PLACED : (placement.getType() == Placement.Type.Fiducial ? FIDUCIAL
                 : placement.getType() == Placement.Type.Dispense ? DISPENSE : PLACEMENT);
-        if (!boardEnabled || !placementEnabled) {
-            return;
-        }
         g2.setColor(color);
         if (placement.getType() == Placement.Type.Fiducial) {
             g2.fillOval(x - fiducialRadius, y - fiducialRadius,
