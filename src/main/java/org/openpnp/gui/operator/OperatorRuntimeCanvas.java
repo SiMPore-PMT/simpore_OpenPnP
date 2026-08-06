@@ -9,10 +9,13 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.Shape;
 import java.awt.Toolkit;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.font.GlyphVector;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.Ellipse2D;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -68,7 +71,7 @@ public class OperatorRuntimeCanvas extends JPanel {
     private static final Color PLACEMENT = new Color(174, 54, 54);
     private static final Color PLACED = new Color(210, 158, 24);
     private static final Color FIDUCIAL = new Color(155, 105, 210);
-    private static final Color DISPENSE = new Color(210, 132, 34);
+    private static final Color DISPENSE = new Color(44, 150, 82);
     private static final int TOOL_HEIGHT = 96;
     private static final int BOARD_WIDTH = 108;
     private static final int BOARD_HEIGHT = 76;
@@ -298,7 +301,7 @@ public class OperatorRuntimeCanvas extends JPanel {
 
     private int getJedecTrayHeight(JEDEC_TrayFeeder tray) {
         int cell = Math.max(14, Math.min(24, 240 / Math.max(tray.getEffectiveTrayCountRows(), tray.getEffectiveTrayCountCols())));
-        return tray.getEffectiveTrayCountRows() * cell + 104;
+        return tray.getEffectiveTrayCountRows() * cell + 88;
     }
 
     private int getReferenceTrayHeight(ReferenceTrayFeeder tray) {
@@ -316,7 +319,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         int gridWidth = cols * cell;
         int gridHeight = rows * cell;
         int cardWidth = Math.max(gridWidth + 20, 244);
-        int cardHeight = gridHeight + 104;
+        int cardHeight = gridHeight + 88;
         boolean enabled = tray.isEnabled();
         g2.setColor(enabled ? SECTION : new Color(90, 72, 56, 80));
         g2.fillRoundRect(x - 6, y - 4, cardWidth, cardHeight, 12, 12);
@@ -346,9 +349,9 @@ public class OperatorRuntimeCanvas extends JPanel {
             trayPocketHits.add(new TrayPocketHit(tray, index, index + 1,
                     new Rectangle(px, py, cell - 2, cell - 2)));
         }
-        int controlsY = y + 36 + gridHeight + 16;
+        int controlsY = y + 36 + gridHeight + 8;
         Rectangle reset = new Rectangle(x, controlsY, 30, 30);
-        Rectangle enable = new Rectangle(x + 96, controlsY + 5, 120, 20);
+        Rectangle enable = new Rectangle(x + 42, controlsY + 5, 82, 20);
         drawResetControl(g2, reset, enabled);
         drawEnableToggle(g2, enable, enabled);
         trayActionHits.add(new TrayActionHit(tray, reset, true));
@@ -366,26 +369,29 @@ public class OperatorRuntimeCanvas extends JPanel {
         Font iconFont = originalFont.deriveFont(Font.BOLD, 24f);
         GlyphVector glyph = iconFont.createGlyphVector(g2.getFontRenderContext(), "↻");
         Rectangle2D visualBounds = glyph.getVisualBounds();
-        float iconX = (float) (bounds.getCenterX() - visualBounds.getCenterX());
-        float iconY = (float) (bounds.getCenterY() - visualBounds.getCenterY());
-        g2.drawGlyphVector(glyph, iconX, iconY);
+        double iconX = bounds.getCenterX() - visualBounds.getCenterX();
+        double iconY = bounds.getCenterY() - visualBounds.getCenterY() + 1.5;
+        Shape icon = glyph.getOutline((float) iconX, (float) iconY);
+        AffineTransform rotate = AffineTransform.getRotateInstance(
+                Math.toRadians(18), bounds.getCenterX(), bounds.getCenterY());
+        g2.fill(rotate.createTransformedShape(icon));
         g2.setFont(originalFont);
     }
 
     private void drawEnableToggle(Graphics2D g2, Rectangle bounds, boolean enabled) {
-        int centerX = bounds.x + 7;
-        int centerY = bounds.y + bounds.height / 2;
-        int outerRadius = 7;
-        int innerRadius = 3;
+        double centerX = bounds.x + 7.5;
+        double centerY = bounds.getCenterY();
+        double outerRadius = 7;
+        double innerRadius = 3;
         g2.setColor(TEXT);
-        g2.drawOval(centerX - outerRadius, centerY - outerRadius,
-                outerRadius * 2, outerRadius * 2);
+        g2.draw(new Ellipse2D.Double(centerX - outerRadius, centerY - outerRadius,
+                outerRadius * 2, outerRadius * 2));
         if (enabled) {
-            g2.fillOval(centerX - innerRadius, centerY - innerRadius,
-                    innerRadius * 2, innerRadius * 2);
+            g2.fill(new Ellipse2D.Double(centerX - innerRadius, centerY - innerRadius,
+                    innerRadius * 2, innerRadius * 2));
         }
         g2.drawString(enabled ? "Enabled" : "Disabled",
-                centerX + outerRadius + 5, bounds.y + 14);
+                (float) (centerX + outerRadius + 5), bounds.y + 14);
     }
 
     private int drawReferenceTray(Graphics2D g2, ReferenceTrayFeeder tray, int x, int y) {
