@@ -84,7 +84,6 @@ public class OperatorPanel extends JPanel {
     private final JobPanel jobPanel;
     private final OperatorJobEditingService editingService = new OperatorJobEditingService();
     private final OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
-    private final JButton startNewJobButton = createPrimaryButton("Start New Job", Icons.openSCadIcon);
     private final JButton startButton = createActionButton("Start", Icons.start,
             "Start the loaded job using the OpenPnP job processor");
     private final JButton pauseResumeButton = createActionButton("Pause / Resume", Icons.pause,
@@ -144,7 +143,6 @@ public class OperatorPanel extends JPanel {
         add(createTopCommandPanel(), BorderLayout.NORTH);
         add(createRuntimeSplitPanel(), BorderLayout.CENTER);
 
-        startNewJobButton.addActionListener(e -> openJob(true));
         openNewJobButton.addActionListener(e -> openJob(true));
         resetBoardButton.addActionListener(e -> resetCurrentJob(true));
         resetBoardButton.addMouseListener(new MouseAdapter() {
@@ -244,8 +242,6 @@ public class OperatorPanel extends JPanel {
         JPanel panel = new JPanel(new BorderLayout(4, 4));
         JToolBar primaryToolBar = new JToolBar();
         primaryToolBar.setFloatable(false);
-        primaryToolBar.add(startNewJobButton);
-        primaryToolBar.addSeparator();
         primaryToolBar.add(startButton);
         primaryToolBar.add(pauseResumeButton);
         primaryToolBar.add(stopButton);
@@ -330,12 +326,6 @@ public class OperatorPanel extends JPanel {
         return postRunPanel;
     }
 
-    private static JButton createPrimaryButton(String text, Icon icon) {
-        JButton button = createActionButton(text, icon, null);
-        button.setAlignmentX(Component.CENTER_ALIGNMENT);
-        return button;
-    }
-
     private static JButton createActionButton(String text, Icon icon, String tooltip) {
         JButton button = new JButton(text, icon);
         button.setFocusable(false);
@@ -400,8 +390,6 @@ public class OperatorPanel extends JPanel {
         updateStatusLabel(state, ready, hasJob, notReadyReason);
         guidanceLabel.setText(createGuidanceText(hasJob, ready, state, notReadyReason));
 
-        startNewJobButton.setEnabled(ready);
-        startNewJobButton.setToolTipText(ready ? "Select a .job.xml file to load and reset for an operator run" : notReadyReason);
         startButton.setEnabled(hasJob && ready && stopped);
         pauseResumeButton.setEnabled(hasJob && ready && runningOrPaused);
         pauseResumeButton.setText(paused ? "Resume" : "Pause");
@@ -488,7 +476,7 @@ public class OperatorPanel extends JPanel {
             return notReadyReason + " Power and home the machine to start an operator job.";
         }
         if (!hasJob) {
-            return "Machine ready. Select Start New Job to load and reset an operator job.";
+            return "Machine ready. Select Open New Job to load and reset an operator job.";
         }
         if ("Running".equals(state) || "Pausing".equals(state)) {
             return "Job is running. Operator edits are locked until the job stops.";
