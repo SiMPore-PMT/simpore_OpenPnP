@@ -54,7 +54,7 @@ public class OperatorRuntimeCanvas extends JPanel {
                 int feedIndexBase0, int displayPosition);
         void resetTray(JEDEC_TrayFeeder feeder);
         void enableTray(JEDEC_TrayFeeder feeder);
-        void panelSelectionChanged();
+        void panelSelectionChanged(PlacementsHolderLocation<?> panelLocation);
     }
 
     private static final Color BACKGROUND = new Color(35, 39, 46);
@@ -690,15 +690,15 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     private void selectPanelQuadrant(PanelQuadrant quadrant) {
-        if (quadrant == selectedPanelQuadrant) {
-            return;
-        }
         selectedPanelQuadrant = quadrant;
         selectedBoards.clear();
         dragRectangle = null;
         if (listener != null) {
             listener.boardSelectionChanged(getSelectedBoards());
-            listener.panelSelectionChanged();
+            PanelSlot selectedSlot = getSelectedPanelSlot(getPanelSlots(job));
+            if (selectedSlot != null && selectedSlot.location != null) {
+                listener.panelSelectionChanged(selectedSlot.location);
+            }
         }
         repaint();
     }

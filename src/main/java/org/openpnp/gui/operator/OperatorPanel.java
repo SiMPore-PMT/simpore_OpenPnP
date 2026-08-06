@@ -657,8 +657,9 @@ public class OperatorPanel extends JPanel {
                 OperatorPanel.this.enableTray(feeder);
             }
             @Override
-            public void panelSelectionChanged() {
+            public void panelSelectionChanged(PlacementsHolderLocation<?> panelLocation) {
                 selectedBoards.clear();
+                selectedBoards.add(panelLocation);
                 updateDetailsPanel();
                 repaintRuntime();
             }
@@ -822,7 +823,15 @@ public class OperatorPanel extends JPanel {
             return;
         }
         PlacementsHolderLocation<?> board = selectedBoards.iterator().next();
-        selectionLabel.setText("Board: " + board.getId() + (board.isEnabled() ? "" : " (disabled)"));
+        if (board instanceof PanelLocation) {
+            int boardCount = countPanelBoards((PanelLocation) board);
+            selectionLabel.setText("Panel: " + board.getId() + " • " + boardCount
+                    + (boardCount == 1 ? " board" : " boards")
+                    + (board.isEnabled() ? "" : " (disabled)"));
+        }
+        else {
+            selectionLabel.setText("Board: " + board.getId() + (board.isEnabled() ? "" : " (disabled)"));
+        }
         for (Placement placement : board.getPlacementsHolder().getPlacements()) {
             rowPlacements.add(new RowPlacement(board, placement));
             Part part = placement.getPart();
@@ -834,6 +843,19 @@ public class OperatorPanel extends JPanel {
         }
         updatingDetails = false;
         updateDetailsPanelSize();
+    }
+
+    private int countPanelBoards(PanelLocation panel) {
+        int count = 0;
+        for (PlacementsHolderLocation<?> child : panel.getChildren()) {
+            if (child instanceof PanelLocation) {
+                count += countPanelBoards((PanelLocation) child);
+            }
+            else {
+                count++;
+            }
+        }
+        return count;
     }
 
     private void updateDetailsPanelSize() {
