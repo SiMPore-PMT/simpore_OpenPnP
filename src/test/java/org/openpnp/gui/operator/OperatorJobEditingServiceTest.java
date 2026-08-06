@@ -30,6 +30,14 @@ public class OperatorJobEditingServiceTest {
         Job job = jobWithBoard();
         BoardLocation board = job.getBoardLocations().get(0);
         Placement placement = board.getPlacementsHolder().getPlacements().get(0);
+        Placement dispense = new Placement("D1");
+        dispense.setType(Placement.Type.Dispense);
+        dispense.setEnabled(false);
+        board.getPlacementsHolder().addPlacement(dispense);
+        Placement fiducial = new Placement("F1");
+        fiducial.setType(Placement.Type.Fiducial);
+        fiducial.setEnabled(false);
+        board.getPlacementsHolder().addPlacement(fiducial);
         JEDEC_TrayFeeder feeder = new JEDEC_TrayFeeder();
         feeder.setFeedCount(7);
         board.setLocallyEnabled(false);
@@ -41,6 +49,10 @@ public class OperatorJobEditingServiceTest {
         assertEquals(7, feeder.getFeedCount());
         assertTrue(board.isLocallyEnabled());
         assertTrue(placement.isEnabled());
+        assertTrue(dispense.isEnabled());
+        assertTrue(fiducial.isEnabled());
+        assertTrue(job.retrieveEnabledState(board, dispense));
+        assertTrue(job.retrieveEnabledState(board, fiducial));
         assertFalse(job.retrievePlacedStatus(board, placement.getId()));
     }
 

@@ -9,8 +9,10 @@ import java.util.Properties;
 import java.util.Set;
 
 import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder;
+import org.openpnp.machine.reference.feeder.ReferenceTrayFeeder;
 import org.openpnp.model.Configuration;
 import org.openpnp.model.Job;
+import org.openpnp.model.Part;
 import org.openpnp.model.Placement;
 import org.openpnp.model.PlacementsHolderLocation;
 import org.openpnp.spi.Feeder;
@@ -19,14 +21,37 @@ public class OperatorJobEditingService {
     private final Set<String> globallyDisabledDispenseKeys = new HashSet<>();
 
     public void resetBoardsOnly(Job job) throws Exception {
+        resetJob(job, false);
+    }
+
+    public void resetJob(Job job, boolean resetTrayProgress) throws Exception {
         requireJob(job);
         job.removeAllPlacedStatus();
+        globallyDisabledDispenseKeys.clear();
+        Set<Part> jobParts = new HashSet<>();
         for (PlacementsHolderLocation<?> boardLocation : job.getBoardLocations()) {
-            setBoardEnabled(job, boardLocation, true);
+            boardLocation.setLocallyEnabled(true);
+            job.storeEnabledState(boardLocation, null, true);
             for (Placement placement : boardLocation.getPlacementsHolder().getPlacements()) {
-                if (placement.getType() == Placement.Type.Placement
-                        || placement.getType() == Placement.Type.Dispense) {
-                    setPlacementEnabled(job, boardLocation, placement, true);
+                placement.setEnabled(true);
+                job.storeEnabledState(boardLocation, placement, true);
+                if (placement.getPart() != null) {
+                    jobParts.add(placement.getPart());
+                }
+            }
+        }
+        if (resetTrayProgress && Configuration.get().getMachine() != null) {
+            for (Feeder feeder : Configuration.get().getMachine().getFeeders()) {
+                if (!jobParts.contains(feeder.getPart())) {
+                    continue;
+                }
+                if (feeder instanceof JEDEC_TrayFeeder) {
+                    JEDEC_TrayFeeder tray = (JEDEC_TrayFeeder) feeder;
+                    tray.setFeedCount(0);
+                    saveTrayProgress(job, tray);
+                }
+                else if (feeder instanceof ReferenceTrayFeeder) {
+                    ((ReferenceTrayFeeder) feeder).setFeedCount(0);
                 }
             }
         }

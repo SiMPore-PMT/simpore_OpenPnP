@@ -4,13 +4,19 @@ import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.Shape;
 import java.awt.Toolkit;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.font.GlyphVector;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -48,7 +54,7 @@ public class OperatorRuntimeCanvas extends JPanel {
                 int feedIndexBase0, int displayPosition);
         void resetTray(JEDEC_TrayFeeder feeder);
         void enableTray(JEDEC_TrayFeeder feeder);
-        void panelSelectionChanged();
+        void panelSelectionChanged(PlacementsHolderLocation<?> panelLocation);
     }
 
     private static final Color BACKGROUND = new Color(35, 39, 46);
@@ -64,8 +70,8 @@ public class OperatorRuntimeCanvas extends JPanel {
     private static final Color SELECTED = new Color(38, 120, 210);
     private static final Color PLACEMENT = new Color(174, 54, 54);
     private static final Color PLACED = new Color(210, 158, 24);
-    private static final Color FIDUCIAL = new Color(44, 150, 82);
-    private static final Color DISPENSE = new Color(155, 105, 210);
+    private static final Color FIDUCIAL = new Color(155, 105, 210);
+    private static final Color DISPENSE = new Color(44, 150, 82);
     private static final int TOOL_HEIGHT = 96;
     private static final int BOARD_WIDTH = 108;
     private static final int BOARD_HEIGHT = 76;
@@ -176,9 +182,11 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     public void setJob(Job job) {
+        if (this.job != job) {
+            selectedBoards.clear();
+            selectedPanelQuadrant = null;
+        }
         this.job = job;
-        selectedBoards.clear();
-        selectedPanelQuadrant = null;
         repaint();
     }
 
@@ -293,7 +301,7 @@ public class OperatorRuntimeCanvas extends JPanel {
 
     private int getJedecTrayHeight(JEDEC_TrayFeeder tray) {
         int cell = Math.max(14, Math.min(24, 240 / Math.max(tray.getEffectiveTrayCountRows(), tray.getEffectiveTrayCountCols())));
-        return tray.getEffectiveTrayCountRows() * cell + 104;
+        return tray.getEffectiveTrayCountRows() * cell + 88;
     }
 
     private int getReferenceTrayHeight(ReferenceTrayFeeder tray) {
@@ -311,7 +319,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         int gridWidth = cols * cell;
         int gridHeight = rows * cell;
         int cardWidth = Math.max(gridWidth + 20, 244);
-        int cardHeight = gridHeight + 104;
+        int cardHeight = gridHeight + 88;
         boolean enabled = tray.isEnabled();
         g2.setColor(enabled ? SECTION : new Color(90, 72, 56, 80));
         g2.fillRoundRect(x - 6, y - 4, cardWidth, cardHeight, 12, 12);
@@ -341,9 +349,9 @@ public class OperatorRuntimeCanvas extends JPanel {
             trayPocketHits.add(new TrayPocketHit(tray, index, index + 1,
                     new Rectangle(px, py, cell - 2, cell - 2)));
         }
-        int controlsY = y + 36 + gridHeight + 16;
+        int controlsY = y + 36 + gridHeight + 8;
         Rectangle reset = new Rectangle(x, controlsY, 30, 30);
-        Rectangle enable = new Rectangle(x + 96, controlsY + 5, 120, 20);
+        Rectangle enable = new Rectangle(x + 42, controlsY + 5, 82, 20);
         drawResetControl(g2, reset, enabled);
         drawEnableToggle(g2, enable, enabled);
         trayActionHits.add(new TrayActionHit(tray, reset, true));
@@ -357,17 +365,33 @@ public class OperatorRuntimeCanvas extends JPanel {
         g2.setColor(enabled ? BORDER : new Color(210, 120, 70));
         g2.drawOval(bounds.x, bounds.y, bounds.width, bounds.height);
         g2.setColor(enabled ? TEXT : new Color(255, 185, 130));
-        g2.drawString("↻", bounds.x + 8, bounds.y + 19);
+        Font originalFont = g2.getFont();
+        Font iconFont = originalFont.deriveFont(Font.BOLD, 24f);
+        GlyphVector glyph = iconFont.createGlyphVector(g2.getFontRenderContext(), "↻");
+        Rectangle2D visualBounds = glyph.getVisualBounds();
+        double iconX = bounds.getCenterX() - visualBounds.getCenterX();
+        double iconY = bounds.getCenterY() - visualBounds.getCenterY() + 1.5;
+        Shape icon = glyph.getOutline((float) iconX, (float) iconY);
+        AffineTransform rotate = AffineTransform.getRotateInstance(
+                Math.toRadians(18), bounds.getCenterX(), bounds.getCenterY());
+        g2.fill(rotate.createTransformedShape(icon));
+        g2.setFont(originalFont);
     }
 
     private void drawEnableToggle(Graphics2D g2, Rectangle bounds, boolean enabled) {
-        int cy = bounds.y + bounds.height / 2;
+        double centerX = bounds.x + 7.5;
+        double centerY = bounds.getCenterY();
+        double outerRadius = 7;
+        double innerRadius = 3;
         g2.setColor(TEXT);
-        g2.drawOval(bounds.x, cy - 6, 12, 12);
+        g2.draw(new Ellipse2D.Double(centerX - outerRadius, centerY - outerRadius,
+                outerRadius * 2, outerRadius * 2));
         if (enabled) {
-            g2.fillOval(bounds.x + 3, cy - 3, 6, 6);
+            g2.fill(new Ellipse2D.Double(centerX - innerRadius, centerY - innerRadius,
+                    innerRadius * 2, innerRadius * 2));
         }
-        g2.drawString(enabled ? "Enabled" : "Disabled", bounds.x + 18, bounds.y + 14);
+        g2.drawString(enabled ? "Enabled" : "Disabled",
+                (float) (centerX + outerRadius + 5), bounds.y + 14);
     }
 
     private int drawReferenceTray(Graphics2D g2, ReferenceTrayFeeder tray, int x, int y) {
@@ -396,72 +420,47 @@ public class OperatorRuntimeCanvas extends JPanel {
             g2.drawString("No job loaded", getWidth() / 2 - 42, getHeight() / 3 + 38);
             return;
         }
-        List<? extends PlacementsHolderLocation<?>> boards = job.getBoardLocations();
-        if (boards.isEmpty()) {
 
         List<PanelSlot> slots = getPanelSlots(job);
         PanelSlot selectedSlot = getSelectedPanelSlot(slots);
         List<PlacementsHolderLocation<?>> visibleBoards = getVisibleBoardLocations(selectedSlot);
         if (visibleBoards.isEmpty()) {
+            pruneHiddenSelection(visibleBoards);
             return;
         }
 
-        List<Location> locations = new ArrayList<>();
-        for (PlacementsHolderLocation<?> boardLocation : visibleBoards) {
-            if (!boardLocation.isEnabled()) {
-                continue;
-            }
-            locations.add(boardLocation.getGlobalLocation());
-            for (Placement placement : boardLocation.getPlacementsHolder().getPlacements()) {
-                if (placement.isEnabled()) {
-                    locations.add(boardLocation.getGlobalLocation().add(placement.getLocation()));
-                }
-            }
-        }
-        if (locations.isEmpty()) {
-            return;
-        }
         int trayColumnWidth = Math.min(300, Math.max(230, getWidth() / 3));
-        Rectangle area = new Rectangle(trayColumnWidth + 16, 46, getWidth() - trayColumnWidth - 34, getHeight() - 60);
+        Rectangle area = new Rectangle(trayColumnWidth + 16, 46,
+                getWidth() - trayColumnWidth - 34, getHeight() - 60);
         g2.setColor(TEXT);
-        g2.drawString("Job Layout" + (selectedSlot == null || populatedPanelSlotCount(slots) <= 1 ? "" : " • " + selectedSlot.quadrant.label), area.x, area.y - 10);
+        g2.drawString("Job Layout" + (selectedSlot == null || populatedPanelSlotCount(slots) <= 1
+                ? "" : " • " + selectedSlot.quadrant.label), area.x, area.y - 10);
         g2.setColor(SECTION);
         g2.fillRoundRect(area.x, area.y, area.width, area.height, 14, 14);
         g2.setColor(BORDER);
         g2.drawRoundRect(area.x, area.y, area.width, area.height, 14, 14);
-        g2.setColor(TEXT);
-        g2.drawString("Job Layout", area.x + 12, area.y + 18);
-        Rectangle content = new Rectangle(area.x + JOB_CONTENT_PADDING, area.y + JOB_HEADER_HEIGHT,
-                Math.max(0, area.width - JOB_CONTENT_PADDING * 2),
-                Math.max(0, area.height - JOB_HEADER_HEIGHT - JOB_CONTENT_PADDING));
-        Bounds bounds = new Bounds(boards, content);
-        for (PlacementsHolderLocation<?> boardLocation : boards) {
-            drawBoard(g2, bounds, boardLocation);
+
         boolean showPanelSelector = populatedPanelSlotCount(slots) > 1;
         if (showPanelSelector) {
             drawPanelSelector(g2, area, slots);
         }
-        Rectangle contentArea = showPanelSelector
-                ? new Rectangle(area.x, area.y + 96, area.width, Math.max(1, area.height - 96))
-                : area;
+        int headerHeight = showPanelSelector ? 96 : JOB_HEADER_HEIGHT;
+        Rectangle content = new Rectangle(area.x + JOB_CONTENT_PADDING, area.y + headerHeight,
+                Math.max(1, area.width - JOB_CONTENT_PADDING * 2),
+                Math.max(1, area.height - headerHeight - JOB_CONTENT_PADDING));
+        Bounds bounds = new Bounds(visibleBoards, content);
         List<PlacementsHolderLocation<?>> drawnBoards = new ArrayList<>();
         for (PlacementsHolderLocation<?> boardLocation : visibleBoards) {
-            if (drawBoard(g2, bounds, contentArea, boardLocation)) {
-                drawnBoards.add(boardLocation);
-            }
+            drawBoard(g2, bounds, boardLocation);
+            drawnBoards.add(boardLocation);
         }
         pruneHiddenSelection(drawnBoards);
     }
 
-    private boolean drawBoard(Graphics2D g2, Bounds bounds, Rectangle area, PlacementsHolderLocation<?> boardLocation) {
-        Location bl = boardLocation.getGlobalLocation();
-        int bx = bounds.x(bl, area);
-        int by = bounds.y(bl, area);
-        Rectangle boardBounds = new Rectangle(bx - BOARD_WIDTH / 2, by - BOARD_HEIGHT / 2, BOARD_WIDTH, BOARD_HEIGHT);
+    private void drawBoard(Graphics2D g2, Bounds bounds,
+            PlacementsHolderLocation<?> boardLocation) {
+        Rectangle boardBounds = bounds.rectangle(boardLocation);
         boolean enabled = boardLocation.isEnabled();
-        if (!enabled) {
-            return false;
-        }
         boolean selected = selectedBoards.contains(boardLocation);
         g2.setColor(enabled ? BOARD_FILL : BOARD_DISABLED);
         g2.fillRoundRect(boardBounds.x, boardBounds.y, boardBounds.width, boardBounds.height, 10, 10);
@@ -470,7 +469,8 @@ public class OperatorRuntimeCanvas extends JPanel {
         if (selected) {
             g2.setStroke(new BasicStroke(3f));
             g2.setColor(SELECTED);
-            g2.drawRoundRect(boardBounds.x - 4, boardBounds.y - 4, boardBounds.width + 8, boardBounds.height + 8, 12, 12);
+            g2.drawRoundRect(boardBounds.x - 4, boardBounds.y - 4,
+                    boardBounds.width + 8, boardBounds.height + 8, 12, 12);
             g2.setStroke(new BasicStroke(1.5f));
         }
         boardHits.add(new BoardHit(boardLocation, boardBounds));
@@ -478,9 +478,8 @@ public class OperatorRuntimeCanvas extends JPanel {
             return;
         }
         for (Placement placement : boardLocation.getPlacementsHolder().getPlacements()) {
-            drawPlacement(g2, boardBounds, bounds.scale, boardLocation, placement, enabled);
+            drawPlacement(g2, boardBounds, bounds.scale, boardLocation, placement, true);
         }
-        return true;
     }
 
     private void drawPlacement(Graphics2D g2, Rectangle boardBounds, double displayScale,
@@ -512,9 +511,6 @@ public class OperatorRuntimeCanvas extends JPanel {
         boolean placed = job.retrievePlacedStatus(boardLocation, placement.getId());
         Color color = placed ? PLACED : (placement.getType() == Placement.Type.Fiducial ? FIDUCIAL
                 : placement.getType() == Placement.Type.Dispense ? DISPENSE : PLACEMENT);
-        if (!boardEnabled || !placementEnabled) {
-            return;
-        }
         g2.setColor(color);
         if (placement.getType() == Placement.Type.Fiducial) {
             g2.fillOval(x - fiducialRadius, y - fiducialRadius,
@@ -694,15 +690,15 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     private void selectPanelQuadrant(PanelQuadrant quadrant) {
-        if (quadrant == selectedPanelQuadrant) {
-            return;
-        }
         selectedPanelQuadrant = quadrant;
         selectedBoards.clear();
         dragRectangle = null;
         if (listener != null) {
             listener.boardSelectionChanged(getSelectedBoards());
-            listener.panelSelectionChanged();
+            PanelSlot selectedSlot = getSelectedPanelSlot(getPanelSlots(job));
+            if (selectedSlot != null && selectedSlot.location != null) {
+                listener.panelSelectionChanged(selectedSlot.location);
+            }
         }
         repaint();
     }
