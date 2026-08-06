@@ -20,8 +20,10 @@ import java.io.File;
 import java.io.FilenameFilter;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import javax.swing.BorderFactory;
@@ -68,9 +70,13 @@ import org.openpnp.model.PanelLocation;
 import org.openpnp.model.Part;
 import org.openpnp.model.Placement;
 import org.openpnp.model.PlacementsHolderLocation;
+import org.openpnp.spi.Camera;
 import org.openpnp.spi.Feeder;
+import org.openpnp.spi.HeadMountable;
 import org.openpnp.spi.Machine;
 import org.openpnp.spi.MachineListener;
+import org.openpnp.util.MovableUtils;
+import org.openpnp.util.UiUtils;
 
 import com.google.common.eventbus.Subscribe;
 
@@ -98,6 +104,8 @@ public class OperatorPanel extends JPanel {
             "Select and reset a different operator job");
     private final JButton resetBoardsOnlyButton = createActionButton("Reset Boards", Icons.refresh,
             "Clear board and placement progress without resetting tray counts");
+    private final JButton moveCameraButton = createActionButton("Move Camera", Icons.centerCamera,
+            "Move the camera to the selected board or tray pocket");
     private final JToggleButton globalDispenseToggle = new JToggleButton("Dispense", Icons.centerPin);
     private final JToggleButton editToggle = new JToggleButton("Edit", Icons.captureTool);
     private final JToggleButton boardModeToggle = new JToggleButton("Boards", Icons.board);
@@ -122,12 +130,14 @@ public class OperatorPanel extends JPanel {
         }
         @Override
         public boolean isCellEditable(int row, int column) {
-            return isEditingAllowed() && (column == 4 || column == 5);
+            if (!isEditingAllowed() || row < 0 || row >= detailRows.size()) return false;
+            DetailRow detail = detailRows.get(row);
+            return detail.kind == RowKind.PANEL ? column == 4 : column == 4 || column == 5;
         }
     };
     private final JTable placementDetailsTable = new JTable(placementDetailsModel);
     private final JScrollPane placementDetailsScrollPane = new JScrollPane(placementDetailsTable);
-    private final List<RowPlacement> rowPlacements = new ArrayList<>();
+    private final List<DetailRow> detailRows = new ArrayList<>();
     private final Set<PlacementsHolderLocation<?>> selectedBoards = new LinkedHashSet<>();
     private final List<AbstractModelObject> feederListeners = new ArrayList<>();
     private boolean updatingDetails;
@@ -171,6 +181,7 @@ public class OperatorPanel extends JPanel {
         });
         modifyLastRunButton.addActionListener(e -> showJobEditor());
         resetBoardsOnlyButton.addActionListener(e -> resetBoardsOnly());
+        moveCameraButton.addActionListener(e -> moveCameraToSelection());
         globalDispenseToggle.addActionListener(e -> setGlobalDispenseEnabled(globalDispenseToggle.isSelected()));
         editToggle.addActionListener(e -> updateButtons());
         boardModeToggle.addActionListener(e -> updateButtons());
@@ -180,6 +191,7 @@ public class OperatorPanel extends JPanel {
         fiducialFilter.addActionListener(e -> updateButtons());
         placementDetailsTable.getModel().addTableModelListener(e -> applyPlacementTableEdit(e.getFirstRow(), e.getColumn()));
         startButton.addActionListener(e -> {
+            clearPocketSelection();
             turnEditOff();
             jobPanel.startPauseResumeJobAction.actionPerformed(
                     new ActionEvent(this, ActionEvent.ACTION_PERFORMED, "operator-start"));
@@ -289,6 +301,7 @@ public class OperatorPanel extends JPanel {
         boardModeToggle.setSelected(true);
         toolBar.add(resetBoardsOnlyButton);
         toolBar.add(globalDispenseToggle);
+        toolBar.add(moveCameraButton);
         toolBar.addSeparator();
         toolBar.add(editToggle);
         toolBar.add(boardModeToggle);
@@ -401,6 +414,7 @@ public class OperatorPanel extends JPanel {
         openNewJobButton.setEnabled(ready && stopped);
         postRunPanel.setVisible(stopped && hasJob);
         resetBoardsOnlyButton.setEnabled(editingAllowed);
+        updateMoveCameraButton(ready, runningOrPaused);
         globalDispenseToggle.setEnabled(editingAllowed);
         editToggle.setEnabled(editingAllowed);
         boardModeToggle.setEnabled(editingAllowed && editToggle.isSelected());
@@ -416,6 +430,53 @@ public class OperatorPanel extends JPanel {
         canvas.setEditingAllowed(editingAllowed);
         canvas.setSelectedTool(mainFrame.getMachineControls().getSelectedTool());
         updateEditMode();
+    }
+
+    private CameraTarget currentCameraTarget() {
+        CameraTarget pocket = canvas.getSelectedPocketTarget();
+        if (pocket != null) return pocket;
+        if (selectedBoards.size() == 1) {
+            PlacementsHolderLocation<?> location = selectedBoards.iterator().next();
+            if (!(location instanceof PanelLocation)) return CameraTarget.board(location);
+        }
+        return null;
+    }
+
+    private void updateMoveCameraButton(boolean ready, boolean activeJob) {
+        String reason = null;
+        CameraTarget target = currentCameraTarget();
+        HeadMountable tool = mainFrame.getMachineControls().getSelectedTool();
+        if (!ready) reason = machineNotReadyReason();
+        else if (activeJob) reason = "Camera navigation is unavailable while a job is running or paused.";
+        else if (target == null) reason = "Select exactly one board or one JEDEC tray pocket.";
+        else if (tool == null || tool.getHead() == null || tool.getHead().getDefaultCamera() == null) {
+            reason = "The selected tool has no head camera.";
+        }
+        moveCameraButton.setEnabled(reason == null);
+        moveCameraButton.setToolTipText(reason == null
+                ? "Move the camera to the selected board or tray pocket" : reason);
+    }
+
+    private void clearPocketSelection() {
+        canvas.clearPocketSelection();
+        updateButtons();
+    }
+
+    private void moveCameraToSelection() {
+        CameraTarget target = currentCameraTarget();
+        if (target == null || !moveCameraButton.isEnabled()) return;
+        UiUtils.submitUiMachineTask(() -> {
+            HeadMountable tool = MainFrame.get().getMachineControls().getSelectedTool();
+            Camera camera = tool.getHead().getDefaultCamera();
+            org.openpnp.model.Location location = target.getType() == CameraTarget.Type.BOARD
+                    ? target.getBoardLocation().getGlobalLocation()
+                    : target.getFeeder().getNominalPocketLocation(target.getFeedIndexBase0());
+            MovableUtils.moveToLocationAtSafeZ(camera, location);
+            MovableUtils.fireTargetedUserAction(camera);
+            Map<String, Object> globals = new HashMap<>();
+            globals.put("camera", camera);
+            Configuration.get().getScripting().on("Camera.AfterPosition", globals);
+        });
     }
 
     private void updateEditMode() {
@@ -443,9 +504,6 @@ public class OperatorPanel extends JPanel {
         if (editToggle.isSelected()) {
             editToggle.setSelected(false);
         }
-        canvas.clearSelection();
-        selectedBoards.clear();
-        updateDetailsPanel();
         updateEditMode();
     }
 
@@ -566,6 +624,9 @@ public class OperatorPanel extends JPanel {
 
     private void handleJobStateChange(String oldState, String newState) {
         SwingUtilities.invokeLater(() -> {
+            if ("Running".equals(newState) || "Pausing".equals(newState) || "Paused".equals(newState)) {
+                clearPocketSelection();
+            }
             if ("Running".equals(newState)) {
                 turnEditOff();
             }
@@ -603,6 +664,10 @@ public class OperatorPanel extends JPanel {
                 feederListeners.add(modelObject);
             }
         }
+        CameraTarget pocket = canvas.getSelectedPocketTarget();
+        if (pocket != null && !machine.getFeeders().contains(pocket.getFeeder())) {
+            clearPocketSelection();
+        }
         updateDetailsPanel();
         updateButtons();
         repaintRuntime();
@@ -635,6 +700,7 @@ public class OperatorPanel extends JPanel {
                 selectedBoards.clear();
                 selectedBoards.addAll(selection);
                 updateDetailsPanel();
+                updateButtons();
             }
             @Override
             public void showBoardContextMenu(Component invoker, int x, int y, Set<PlacementsHolderLocation<?>> selection) {
@@ -663,6 +729,19 @@ public class OperatorPanel extends JPanel {
                 selectedBoards.add(panelLocation);
                 updateDetailsPanel();
                 repaintRuntime();
+                updateButtons();
+            }
+            @Override
+            public void trayPocketSelectionChanged(JEDEC_TrayFeeder feeder, int feedIndexBase0) {
+                selectedBoards.clear();
+                selectionLabel.setText("Tray: " + feeder.getName() + " • Pocket "
+                        + (feedIndexBase0 + 1) + " selected");
+                updatingDetails = true;
+                placementDetailsModel.setRowCount(0);
+                detailRows.clear();
+                updatingDetails = false;
+                updateDetailsPanelSize();
+                updateButtons();
             }
         };
     }
@@ -785,6 +864,7 @@ public class OperatorPanel extends JPanel {
             return;
         }
         try {
+            clearPocketSelection();
             editingService.resetJedecTray(jobPanel.getJob(), feeder);
             refreshAndPersistView(false);
         }
@@ -794,17 +874,24 @@ public class OperatorPanel extends JPanel {
     }
 
     private void applyPlacementTableEdit(int row, int column) {
-        if (updatingDetails || row < 0 || row >= rowPlacements.size() || column < 4 || !isEditingAllowed()) {
+        if (updatingDetails || row < 0 || row >= detailRows.size() || column < 4 || !isEditingAllowed()) {
             return;
         }
-        RowPlacement rowPlacement = rowPlacements.get(row);
+        DetailRow detail = detailRows.get(row);
         boolean value = Boolean.TRUE.equals(placementDetailsModel.getValueAt(row, column));
         try {
-            if (column == 4) {
-                editingService.setPlacementEnabled(jobPanel.getJob(), rowPlacement.boardLocation, rowPlacement.placement, value);
+            if (detail.kind == RowKind.PANEL) {
+                if (!confirmEdit((value ? "Enable " : "Disable ") + "this panel and all descendant panels and boards?")) {
+                    updateDetailsPanel();
+                    return;
+                }
+                editingService.setPanelEnabled(jobPanel.getJob(), detail.panelLocation, value);
+            }
+            else if (column == 4) {
+                editingService.setPlacementEnabled(jobPanel.getJob(), detail.boardLocation, detail.placement, value);
             }
             else if (column == 5) {
-                editingService.setPlacementPlaced(jobPanel.getJob(), rowPlacement.boardLocation, rowPlacement.placement, value);
+                editingService.setPlacementPlaced(jobPanel.getJob(), detail.boardLocation, detail.placement, value);
             }
             refreshAndPersistView(true);
         }
@@ -816,7 +903,7 @@ public class OperatorPanel extends JPanel {
     private void updateDetailsPanel() {
         updatingDetails = true;
         placementDetailsModel.setRowCount(0);
-        rowPlacements.clear();
+        detailRows.clear();
         if (selectedBoards.isEmpty()) {
             selectionLabel.setText("Select a board to inspect placements.");
             updatingDetails = false;
@@ -825,25 +912,47 @@ public class OperatorPanel extends JPanel {
         }
         PlacementsHolderLocation<?> board = selectedBoards.iterator().next();
         if (board instanceof PanelLocation) {
-            int boardCount = countPanelBoards((PanelLocation) board);
-            selectionLabel.setText("Panel: " + board.getId() + " • " + boardCount
+            PanelLocation panel = (PanelLocation) board;
+            int boardCount = countPanelBoards(panel);
+            String panelId = panel.getId() == null || panel.getId().trim().isEmpty() ? "Panel" : panel.getId();
+            selectionLabel.setText("Panel: " + panelId + " • " + boardCount
                     + (boardCount == 1 ? " board" : " boards")
                     + (board.isEnabled() ? "" : " (disabled)"));
+            detailRows.add(DetailRow.panel(panel));
+            placementDetailsModel.addRow(new Object[] { panelId, "Panel", "", "", panel.isEnabled(),
+                    null, panel.isEnabled() ? "Enabled" : "Disabled" });
+            List<PlacementsHolderLocation<?>> descendants = new ArrayList<>();
+            collectPanelBoards(panel, descendants);
+            for (PlacementsHolderLocation<?> descendant : descendants) {
+                addPlacementRows(descendant, true);
+            }
         }
         else {
             selectionLabel.setText("Board: " + board.getId() + (board.isEnabled() ? "" : " (disabled)"));
-        }
-        for (Placement placement : board.getPlacementsHolder().getPlacements()) {
-            rowPlacements.add(new RowPlacement(board, placement));
-            Part part = placement.getPart();
-            boolean placed = jobPanel.getJob().retrievePlacedStatus(board, placement.getId());
-            String status = !placement.isEnabled() ? "Disabled" : placed ? "Placed" : "Pending";
-            placementDetailsModel.addRow(new Object[] { placement.getId(), placement.getType().name(),
-                    part == null ? "" : part.getId(), placement.getSide().name(), placement.isEnabled(),
-                    placed, status });
+            addPlacementRows(board, false);
         }
         updatingDetails = false;
         updateDetailsPanelSize();
+    }
+
+    private void addPlacementRows(PlacementsHolderLocation<?> board, boolean qualifyId) {
+        for (Placement placement : board.getPlacementsHolder().getPlacements()) {
+            detailRows.add(DetailRow.placement(board, placement));
+            Part part = placement.getPart();
+            boolean placed = jobPanel.getJob().retrievePlacedStatus(board, placement.getId());
+            String status = !placement.isEnabled() ? "Disabled" : placed ? "Placed" : "Pending";
+            String id = qualifyId ? board.getId() + " / " + placement.getId() : placement.getId();
+            placementDetailsModel.addRow(new Object[] { id, placement.getType().name(),
+                    part == null ? "" : part.getId(), placement.getSide().name(), placement.isEnabled(),
+                    placed, status });
+        }
+    }
+
+    private void collectPanelBoards(PanelLocation panel, List<PlacementsHolderLocation<?>> boards) {
+        for (PlacementsHolderLocation<?> child : panel.getChildren()) {
+            if (child instanceof PanelLocation) collectPanelBoards((PanelLocation) child, boards);
+            else boards.add(child);
+        }
     }
 
     private int countPanelBoards(PanelLocation panel) {
@@ -956,8 +1065,21 @@ public class OperatorPanel extends JPanel {
                 component.setBackground(UIManager.getColor("Table.background"));
                 component.setForeground(UIManager.getColor("Table.foreground"));
             }
-            if (!selected && row >= 0 && row < rowPlacements.size()) {
-                RowPlacement rowPlacement = rowPlacements.get(row);
+            if (row >= 0 && row < detailRows.size() && detailRows.get(row).kind == RowKind.PANEL) {
+                Font base = component.getFont();
+                component.setFont(base.deriveFont(Font.BOLD));
+                if (!selected) {
+                    Color background = UIManager.getColor("Table.alternateRowColor");
+                    if (background == null) background = UIManager.getColor("Panel.background");
+                    component.setBackground(background);
+                    component.setForeground(UIManager.getColor("Table.foreground"));
+                }
+                return component;
+            }
+            if (!selected && row >= 0 && row < detailRows.size()) {
+                DetailRow detail = detailRows.get(row);
+                if (detail.kind != RowKind.PLACEMENT) return component;
+                RowPlacement rowPlacement = new RowPlacement(detail.boardLocation, detail.placement);
                 boolean placed = jobPanel.getJob() != null
                         && jobPanel.getJob().retrievePlacedStatus(rowPlacement.boardLocation, rowPlacement.placement.getId());
                 if (column == 1) {
@@ -1018,6 +1140,31 @@ public class OperatorPanel extends JPanel {
         RowPlacement(PlacementsHolderLocation<?> boardLocation, Placement placement) {
             this.boardLocation = boardLocation;
             this.placement = placement;
+        }
+    }
+
+    private enum RowKind { PANEL, PLACEMENT }
+
+    private static class DetailRow {
+        final RowKind kind;
+        final PanelLocation panelLocation;
+        final PlacementsHolderLocation<?> boardLocation;
+        final Placement placement;
+
+        private DetailRow(RowKind kind, PanelLocation panelLocation,
+                PlacementsHolderLocation<?> boardLocation, Placement placement) {
+            this.kind = kind;
+            this.panelLocation = panelLocation;
+            this.boardLocation = boardLocation;
+            this.placement = placement;
+        }
+
+        static DetailRow panel(PanelLocation panel) {
+            return new DetailRow(RowKind.PANEL, panel, null, null);
+        }
+
+        static DetailRow placement(PlacementsHolderLocation<?> board, Placement placement) {
+            return new DetailRow(RowKind.PLACEMENT, null, board, placement);
         }
     }
 }
