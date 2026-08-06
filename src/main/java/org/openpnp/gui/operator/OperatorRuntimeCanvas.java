@@ -60,8 +60,8 @@ public class OperatorRuntimeCanvas extends JPanel {
     private static final Color SELECTED = new Color(38, 120, 210);
     private static final Color PLACEMENT = new Color(174, 54, 54);
     private static final Color PLACED = new Color(210, 158, 24);
-    private static final Color FIDUCIAL = new Color(155, 105, 210);
-    private static final Color DISPENSE = new Color(210, 132, 34);
+    private static final Color FIDUCIAL = new Color(44, 150, 82);
+    private static final Color DISPENSE = new Color(155, 105, 210);
     private static final int TOOL_HEIGHT = 96;
     private static final int BOARD_WIDTH = 108;
     private static final int BOARD_HEIGHT = 76;
@@ -434,8 +434,7 @@ public class OperatorRuntimeCanvas extends JPanel {
             return;
         }
         Location dimensions = boardLocation.getPlacementsHolder().getDimensions();
-        Location boardCenter = dimensions.derive(dimensions.getX() / 2, dimensions.getY() / 2, 0.0, 0.0);
-        Location origin = Utils2D.calculateBoardPlacementLocation(boardLocation, boardCenter);
+        Location origin = Utils2D.calculateBoardPlacementLocation(boardLocation);
         Location p = Utils2D.calculateBoardPlacementLocation(boardLocation, placement.getLocation())
                 .convertToUnits(origin.getUnits());
         dimensions = dimensions.convertToUnits(origin.getUnits());
