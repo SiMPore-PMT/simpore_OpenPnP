@@ -64,6 +64,7 @@ import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder;
 import org.openpnp.model.AbstractModelObject;
 import org.openpnp.model.Configuration;
 import org.openpnp.model.Job;
+import org.openpnp.model.PanelLocation;
 import org.openpnp.model.Part;
 import org.openpnp.model.Placement;
 import org.openpnp.model.PlacementsHolderLocation;
