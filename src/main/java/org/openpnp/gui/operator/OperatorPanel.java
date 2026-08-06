@@ -639,6 +639,12 @@ public class OperatorPanel extends JPanel {
             public void enableTray(JEDEC_TrayFeeder feeder) {
                 OperatorPanel.this.enableTray(feeder);
             }
+            @Override
+            public void panelSelectionChanged() {
+                selectedBoards.clear();
+                updateDetailsPanel();
+                repaintRuntime();
+            }
         };
     }
 
