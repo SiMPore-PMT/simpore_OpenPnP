@@ -69,6 +69,7 @@ public class OperatorRuntimeCanvasTest {
         OperatorRuntimeCanvas.LayoutGeometry geometry =
                 OperatorRuntimeCanvas.calculateLayoutGeometry(1200, 800, 2, 2, true);
         assertEquals(geometry.toolCard.width, geometry.legendCard.width);
+        assertEquals(18, 1200 - geometry.jobCard.x - geometry.jobCard.width);
         assertTrue(geometry.jobCard.contains(geometry.jobTitle));
         assertTrue(geometry.panelLabel.y >= geometry.panelSelectorCard.y
                 + geometry.panelSelectorCard.height + 6);

@@ -460,8 +460,9 @@ public class OperatorRuntimeCanvas extends JPanel {
     private void drawJob(Graphics2D g2) {
         if (job == null) {
             int trayColumnWidth = Math.min(300, Math.max(230, getWidth() / 3));
-            int cardX = trayColumnWidth + 16;
-            int cardWidth = Math.max(120, Math.min(280, getWidth() - cardX - 18));
+            int availableWidth = Math.max(1, getWidth() - trayColumnWidth - 34);
+            int cardWidth = Math.min(280, availableWidth);
+            int cardX = getWidth() - cardWidth - 18;
             g2.setColor(SECTION);
             g2.fillRoundRect(cardX, 46, cardWidth, 70, 16, 16);
             g2.setColor(BORDER);
@@ -520,7 +521,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         Rectangle tool = new Rectangle(10, 8, toolWidth, 26);
         Rectangle legend = new Rectangle(10, 40, toolWidth, 68);
         int trayColumnWidth = Math.min(300, Math.max(230, width / 3));
-        int availableWidth = Math.max(120, width - trayColumnWidth - 34);
+        int availableWidth = Math.max(1, width - trayColumnWidth - 34);
         int jobY = showPanelSelector ? 108 : 46;
         int availableHeight = Math.max(100, height - jobY - 14);
         int desiredWidth = BOARD_WIDTH + (Math.max(1, columns) - 1) * (BOARD_WIDTH + BOARD_GAP);
@@ -529,7 +530,7 @@ public class OperatorRuntimeCanvas extends JPanel {
                 Math.max(showPanelSelector ? 150 : 180, desiredWidth + 24));
         int cardHeight = Math.min(availableHeight,
                 JOB_HEADER_HEIGHT + desiredHeight + 24);
-        Rectangle jobCard = new Rectangle(trayColumnWidth + 16, jobY, cardWidth, cardHeight);
+        Rectangle jobCard = new Rectangle(width - cardWidth - 18, jobY, cardWidth, cardHeight);
         Rectangle title = new Rectangle(jobCard.x + 12, jobCard.y, jobCard.width - 24, JOB_HEADER_HEIGHT);
         Rectangle selector = showPanelSelector
                 ? new Rectangle(jobCard.x + jobCard.width - 122, 8, 122, 66)
