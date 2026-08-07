@@ -74,7 +74,7 @@ public class OperatorRuntimeCanvas extends JPanel {
     private static final Color PLACED = new Color(210, 158, 24);
     private static final Color FIDUCIAL = new Color(155, 105, 210);
     private static final Color DISPENSE = new Color(44, 150, 82);
-    private static final int TOOL_HEIGHT = 102;
+    private static final int TOOL_HEIGHT = 116;
     private static final int BOARD_WIDTH = 108;
     private static final int BOARD_HEIGHT = 76;
     private static final int BOARD_GAP = 10;
@@ -284,18 +284,18 @@ public class OperatorRuntimeCanvas extends JPanel {
         int legendY = 40;
         int legendWidth = Math.min(getWidth() - 20, 280);
         g2.setColor(SECTION);
-        g2.fillRoundRect(legendX, legendY, legendWidth, 48, 10, 10);
+        g2.fillRoundRect(legendX, legendY, legendWidth, 68, 10, 10);
         g2.setColor(BORDER);
-        g2.drawRoundRect(legendX, legendY, legendWidth, 48, 10, 10);
+        g2.drawRoundRect(legendX, legendY, legendWidth, 68, 10, 10);
         int lx = legendX + 12;
         int topY = 58;
         int bottomY = 78;
         lx = drawLegendItem(g2, lx, topY, PLACEMENT, "Placement") + 12;
         lx = drawLegendItem(g2, lx, topY, FIDUCIAL, "Fiducial") + 12;
         drawLegendItem(g2, legendX + 12, bottomY, DISPENSE, "Dispense");
-        lx = drawLegendItem(g2, legendX + 102, bottomY, PLACED, "Placed") + 12;
+        drawLegendItem(g2, legendX + 102, bottomY, PLACED, "Placed");
         g2.setColor(MUTED_TEXT);
-        g2.drawString("Disabled = hidden", lx, bottomY);
+        g2.drawString("Disabled = hidden", legendX + 12, 98);
     }
 
     private int drawLegendItem(Graphics2D g2, int x, int y, Color color, String label) {
@@ -487,6 +487,9 @@ public class OperatorRuntimeCanvas extends JPanel {
         int[] grid = boardGridSize(visibleBoards);
         LayoutGeometry geometry = calculateLayoutGeometry(getWidth(), getHeight(), grid[0], grid[1], showPanelSelector);
         Rectangle area = geometry.jobCard;
+        if (showPanelSelector) {
+            drawPanelSelector(g2, geometry.panelSelectorCard, geometry.panelLabel, slots);
+        }
         g2.setColor(SECTION);
         g2.fillRoundRect(area.x, area.y, area.width, area.height, 14, 14);
         g2.setColor(BORDER);
@@ -498,10 +501,7 @@ public class OperatorRuntimeCanvas extends JPanel {
             g2.setColor(MUTED_TEXT);
             g2.drawString(selectedSlot.quadrant.label, area.x + 88, area.y + 19);
         }
-        if (showPanelSelector) {
-            drawPanelSelector(g2, area, slots);
-        }
-        int headerHeight = JOB_HEADER_HEIGHT + (showPanelSelector ? 100 : 0);
+        int headerHeight = JOB_HEADER_HEIGHT;
         Rectangle content = new Rectangle(area.x + 12, area.y + headerHeight,
                 Math.max(1, area.width - JOB_CONTENT_PADDING * 2),
                 Math.max(1, area.height - headerHeight - 12));
@@ -518,21 +518,21 @@ public class OperatorRuntimeCanvas extends JPanel {
             boolean showPanelSelector) {
         int toolWidth = Math.min(width - 20, 280);
         Rectangle tool = new Rectangle(10, 8, toolWidth, 26);
-        Rectangle legend = new Rectangle(10, 40, toolWidth, 48);
+        Rectangle legend = new Rectangle(10, 40, toolWidth, 68);
         int trayColumnWidth = Math.min(300, Math.max(230, width / 3));
         int availableWidth = Math.max(120, width - trayColumnWidth - 34);
-        int availableHeight = Math.max(100, height - 60);
-        int selectorHeight = showPanelSelector ? 100 : 0;
+        int jobY = showPanelSelector ? 108 : 46;
+        int availableHeight = Math.max(100, height - jobY - 14);
         int desiredWidth = BOARD_WIDTH + (Math.max(1, columns) - 1) * (BOARD_WIDTH + BOARD_GAP);
         int desiredHeight = BOARD_HEIGHT + (Math.max(1, rows) - 1) * (BOARD_HEIGHT + BOARD_GAP);
         int cardWidth = Math.min(availableWidth,
                 Math.max(showPanelSelector ? 150 : 180, desiredWidth + 24));
         int cardHeight = Math.min(availableHeight,
-                JOB_HEADER_HEIGHT + selectorHeight + desiredHeight + 24);
-        Rectangle jobCard = new Rectangle(trayColumnWidth + 16, 46, cardWidth, cardHeight);
+                JOB_HEADER_HEIGHT + desiredHeight + 24);
+        Rectangle jobCard = new Rectangle(trayColumnWidth + 16, jobY, cardWidth, cardHeight);
         Rectangle title = new Rectangle(jobCard.x + 12, jobCard.y, jobCard.width - 24, JOB_HEADER_HEIGHT);
         Rectangle selector = showPanelSelector
-                ? new Rectangle(jobCard.x + jobCard.width - 136, jobCard.y + JOB_HEADER_HEIGHT + 4, 122, 66)
+                ? new Rectangle(jobCard.x + jobCard.width - 122, 8, 122, 66)
                 : null;
         Rectangle panelLabel = selector == null ? null
                 : new Rectangle(selector.x, selector.y + selector.height + 6, selector.width, 16);
@@ -626,11 +626,12 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
 
-    private void drawPanelSelector(Graphics2D g2, Rectangle area, List<PanelSlot> slots) {
-        int cardWidth = 122;
-        int cardHeight = 66;
-        int x = area.x + area.width - cardWidth - 14;
-        int y = area.y + JOB_HEADER_HEIGHT + 4;
+    private void drawPanelSelector(Graphics2D g2, Rectangle card, Rectangle labelBounds,
+            List<PanelSlot> slots) {
+        int cardWidth = card.width;
+        int cardHeight = card.height;
+        int x = card.x;
+        int y = card.y;
         g2.setColor(new Color(40, 46, 55, 235));
         g2.fillRoundRect(x, y, cardWidth, cardHeight, 14, 14);
         g2.setColor(new Color(120, 135, 155));
@@ -659,7 +660,8 @@ public class OperatorRuntimeCanvas extends JPanel {
         }
         g2.setColor(MUTED_TEXT);
         int labelWidth = g2.getFontMetrics().stringWidth("Panels");
-        g2.drawString("Panels", x + (cardWidth - labelWidth) / 2, y + cardHeight + 18);
+        g2.drawString("Panels", labelBounds.x + (labelBounds.width - labelWidth) / 2,
+                labelBounds.y + 12);
     }
 
     private List<PanelSlot> getPanelSlots(Job job) {

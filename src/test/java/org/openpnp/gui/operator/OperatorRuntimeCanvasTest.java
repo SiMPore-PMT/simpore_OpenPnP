@@ -73,7 +73,10 @@ public class OperatorRuntimeCanvasTest {
         assertTrue(geometry.panelLabel.y >= geometry.panelSelectorCard.y
                 + geometry.panelSelectorCard.height + 6);
         assertTrue(!geometry.panelSelectorCard.intersects(geometry.panelLabel));
-        assertEquals(46 + 28 + 100 + 76 + 24,
+        assertTrue(geometry.panelSelectorCard.y + geometry.panelSelectorCard.height
+                < geometry.jobCard.y);
+        assertTrue(geometry.panelLabel.y + geometry.panelLabel.height < geometry.jobCard.y);
+        assertEquals(108 + 28 + 76 + 24,
                 geometry.jobCard.y + geometry.jobCard.height);
         assertTrue(geometry.jobCard.y + geometry.jobCard.height < 800);
     }
