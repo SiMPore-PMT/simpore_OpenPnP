@@ -13,6 +13,8 @@ import org.openpnp.model.Board;
 import org.openpnp.model.Configuration;
 import org.openpnp.model.BoardLocation;
 import org.openpnp.model.Job;
+import org.openpnp.model.Panel;
+import org.openpnp.model.PanelLocation;
 import org.openpnp.model.Placement;
 
 public class OperatorJobEditingServiceTest {
@@ -105,6 +107,58 @@ public class OperatorJobEditingServiceTest {
 
         assertEquals(0, service.resetJedecTray(null, feeder));
         assertEquals(0, feeder.getFeedCount());
+    }
+
+    @Test
+    public void panelToggleUpdatesTheWholeHierarchyOnceAndPreservesPlacements() throws Exception {
+        CountingService service = new CountingService();
+        Job job = new Job();
+        PanelLocation parent = new PanelLocation(new Panel());
+        PanelLocation nested = new PanelLocation(new Panel());
+        Board board = new Board();
+        Placement independentlyDisabled = new Placement("P-disabled");
+        independentlyDisabled.setEnabled(false);
+        board.addPlacement(independentlyDisabled);
+        BoardLocation boardLocation = new BoardLocation(board);
+        nested.getPanel().addChild(boardLocation);
+        parent.getPanel().addChild(nested);
+        job.getRootPanelLocation().getPanel().addChild(parent);
+
+        service.setPanelEnabled(job, parent, false);
+        assertFalse(parent.isLocallyEnabled());
+        assertFalse(nested.isLocallyEnabled());
+        assertFalse(boardLocation.isLocallyEnabled());
+        assertFalse(job.retrieveEnabledState(parent, null));
+        assertFalse(job.retrieveEnabledState(nested, null));
+        assertFalse(job.retrieveEnabledState(boardLocation, null));
+        assertEquals(1, service.persistCount);
+
+        service.setPanelEnabled(job, parent, true);
+        assertTrue(parent.isLocallyEnabled());
+        assertTrue(nested.isLocallyEnabled());
+        assertTrue(boardLocation.isLocallyEnabled());
+        assertFalse(independentlyDisabled.isEnabled());
+        assertEquals(2, service.persistCount);
+    }
+
+    @Test
+    public void panelToggleMarksUnsavedJobDirty() throws Exception {
+        OperatorJobEditingService service = new OperatorJobEditingService();
+        Job job = new Job();
+        PanelLocation panel = new PanelLocation(new Panel());
+        job.getRootPanelLocation().getPanel().addChild(panel);
+
+        service.setPanelEnabled(job, panel, false);
+
+        assertTrue(job.isDirty());
+    }
+
+    private static class CountingService extends OperatorJobEditingService {
+        int persistCount;
+        @Override void persistJob(Job job) {
+            persistCount++;
+            job.setDirty(true);
+        }
     }
 
     private Job jobWithBoard() {

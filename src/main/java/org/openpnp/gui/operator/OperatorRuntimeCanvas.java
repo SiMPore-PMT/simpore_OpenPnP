@@ -10,6 +10,7 @@ import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Shape;
+import java.awt.Stroke;
 import java.awt.Toolkit;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -55,6 +56,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         void resetTray(JEDEC_TrayFeeder feeder);
         void enableTray(JEDEC_TrayFeeder feeder);
         void panelSelectionChanged(PlacementsHolderLocation<?> panelLocation);
+        void trayPocketSelectionChanged(JEDEC_TrayFeeder feeder, int feedIndexBase0);
     }
 
     private static final Color BACKGROUND = new Color(35, 39, 46);
@@ -72,7 +74,7 @@ public class OperatorRuntimeCanvas extends JPanel {
     private static final Color PLACED = new Color(210, 158, 24);
     private static final Color FIDUCIAL = new Color(155, 105, 210);
     private static final Color DISPENSE = new Color(44, 150, 82);
-    private static final int TOOL_HEIGHT = 96;
+    private static final int TOOL_HEIGHT = 116;
     private static final int BOARD_WIDTH = 108;
     private static final int BOARD_HEIGHT = 76;
     private static final int BOARD_GAP = 10;
@@ -90,6 +92,7 @@ public class OperatorRuntimeCanvas extends JPanel {
     private final List<TrayActionHit> trayActionHits = new ArrayList<>();
     private final List<PanelQuadrantHit> panelQuadrantHits = new ArrayList<>();
     private PanelQuadrant selectedPanelQuadrant;
+    private CameraTarget selectedPocketTarget;
     private Rectangle dragRectangle;
     private int dragStartX;
     private int dragStartY;
@@ -117,6 +120,11 @@ public class OperatorRuntimeCanvas extends JPanel {
                     else {
                         listener.enableTray(actionHit.feeder);
                     }
+                    return;
+                }
+                TrayPocketHit pocketHit = findTrayPocket(e.getX(), e.getY());
+                if (pocketHit != null) {
+                    selectTrayPocket(pocketHit);
                     return;
                 }
                 if (editMode != EditMode.NONE && editingAllowed) {
@@ -185,6 +193,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         if (this.job != job) {
             selectedBoards.clear();
             selectedPanelQuadrant = null;
+            selectedPocketTarget = null;
         }
         this.job = job;
         repaint();
@@ -192,7 +201,36 @@ public class OperatorRuntimeCanvas extends JPanel {
 
     public void clearSelection() {
         selectedBoards.clear();
+        selectedPocketTarget = null;
         dragRectangle = null;
+        repaint();
+    }
+
+    public CameraTarget getSelectedPocketTarget() {
+        return selectedPocketTarget;
+    }
+
+    public void clearPocketSelection() {
+        if (selectedPocketTarget != null) {
+            selectedPocketTarget = null;
+            repaint();
+        }
+    }
+
+    // Package-private semantic entry points keep selection tests independent of pixels.
+    void selectTrayPocket(JEDEC_TrayFeeder feeder, int feedIndexBase0) {
+        selectTrayPocket(new TrayPocketHit(feeder, feedIndexBase0, feedIndexBase0 + 1, new Rectangle()));
+    }
+
+    void selectBoardTarget(PlacementsHolderLocation<?> boardLocation) {
+        selectBoard(boardLocation, false);
+    }
+
+    void selectPanelTarget(PanelLocation panelLocation) {
+        clearPocketSelection();
+        selectedBoards.clear();
+        selectedBoards.add(panelLocation);
+        if (listener != null) listener.panelSelectionChanged(panelLocation);
         repaint();
     }
 
@@ -244,20 +282,20 @@ public class OperatorRuntimeCanvas extends JPanel {
     private void drawLegend(Graphics2D g2) {
         int legendX = 10;
         int legendY = 40;
-        int legendWidth = Math.min(getWidth() - 20, 360);
+        int legendWidth = Math.min(getWidth() - 20, 280);
         g2.setColor(SECTION);
-        g2.fillRoundRect(legendX, legendY, legendWidth, 48, 10, 10);
+        g2.fillRoundRect(legendX, legendY, legendWidth, 68, 10, 10);
         g2.setColor(BORDER);
-        g2.drawRoundRect(legendX, legendY, legendWidth, 48, 10, 10);
-        int lx = 22;
+        g2.drawRoundRect(legendX, legendY, legendWidth, 68, 10, 10);
+        int lx = legendX + 12;
         int topY = 58;
         int bottomY = 78;
-        lx = drawLegendItem(g2, lx, topY, PLACEMENT, "Placement") + 24;
-        lx = drawLegendItem(g2, lx, topY, FIDUCIAL, "Fiducial") + 24;
-        drawLegendItem(g2, lx, topY, DISPENSE, "Dispense");
-        lx = drawLegendItem(g2, 22, bottomY, PLACED, "Placed") + 24;
+        lx = drawLegendItem(g2, lx, topY, PLACEMENT, "Placement") + 12;
+        lx = drawLegendItem(g2, lx, topY, FIDUCIAL, "Fiducial") + 12;
+        drawLegendItem(g2, legendX + 12, bottomY, DISPENSE, "Dispense");
+        drawLegendItem(g2, legendX + 102, bottomY, PLACED, "Placed");
         g2.setColor(MUTED_TEXT);
-        g2.drawString("Disabled = hidden", lx, bottomY);
+        g2.drawString("Disabled = hidden", legendX + 12, 98);
     }
 
     private int drawLegendItem(Graphics2D g2, int x, int y, Color color, String label) {
@@ -346,6 +384,15 @@ public class OperatorRuntimeCanvas extends JPanel {
                 g2.drawRoundRect(px - 2, py - 2, cell + 2, cell + 2, 6, 6);
                 g2.setStroke(new BasicStroke(1.5f));
             }
+            if (isSelectedPocket(tray, index)) {
+                Stroke oldStroke = g2.getStroke();
+                g2.setColor(new Color(35, 78, 128));
+                g2.fillRoundRect(px, py, cell - 2, cell - 2, 3, 3);
+                g2.setStroke(new BasicStroke(3f));
+                g2.setColor(new Color(205, 92, 255));
+                g2.drawRoundRect(px - 2, py - 2, cell + 2, cell + 2, 6, 6);
+                g2.setStroke(oldStroke);
+            }
             trayPocketHits.add(new TrayPocketHit(tray, index, index + 1,
                     new Rectangle(px, py, cell - 2, cell - 2)));
         }
@@ -412,12 +459,17 @@ public class OperatorRuntimeCanvas extends JPanel {
 
     private void drawJob(Graphics2D g2) {
         if (job == null) {
+            int trayColumnWidth = Math.min(300, Math.max(230, getWidth() / 3));
+            int availableWidth = Math.max(1, getWidth() - trayColumnWidth - 34);
+            int cardWidth = Math.min(280, availableWidth);
+            int cardX = getWidth() - cardWidth - 18;
             g2.setColor(SECTION);
-            g2.fillRoundRect(getWidth() / 3, getHeight() / 3, getWidth() / 3, 70, 16, 16);
+            g2.fillRoundRect(cardX, 46, cardWidth, 70, 16, 16);
             g2.setColor(BORDER);
-            g2.drawRoundRect(getWidth() / 3, getHeight() / 3, getWidth() / 3, 70, 16, 16);
+            g2.drawRoundRect(cardX, 46, cardWidth, 70, 16, 16);
             g2.setColor(MUTED_TEXT);
-            g2.drawString("No job loaded", getWidth() / 2 - 42, getHeight() / 3 + 38);
+            int textWidth = g2.getFontMetrics().stringWidth("No job loaded");
+            g2.drawString("No job loaded", cardX + (cardWidth - textWidth) / 2, 84);
             return;
         }
 
@@ -426,28 +478,34 @@ public class OperatorRuntimeCanvas extends JPanel {
         List<PlacementsHolderLocation<?>> visibleBoards = getVisibleBoardLocations(selectedSlot);
         if (visibleBoards.isEmpty()) {
             pruneHiddenSelection(visibleBoards);
+            g2.setColor(MUTED_TEXT);
+            g2.drawString("No boards in selected panel", Math.min(getWidth() - 190,
+                    Math.min(300, Math.max(230, getWidth() / 3)) + 28), 84);
             return;
         }
 
-        int trayColumnWidth = Math.min(300, Math.max(230, getWidth() / 3));
-        Rectangle area = new Rectangle(trayColumnWidth + 16, 46,
-                getWidth() - trayColumnWidth - 34, getHeight() - 60);
-        g2.setColor(TEXT);
-        g2.drawString("Job Layout" + (selectedSlot == null || populatedPanelSlotCount(slots) <= 1
-                ? "" : " • " + selectedSlot.quadrant.label), area.x, area.y - 10);
+        boolean showPanelSelector = populatedPanelSlotCount(slots) > 1;
+        int[] grid = boardGridSize(visibleBoards);
+        LayoutGeometry geometry = calculateLayoutGeometry(getWidth(), getHeight(), grid[0], grid[1], showPanelSelector);
+        Rectangle area = geometry.jobCard;
+        if (showPanelSelector) {
+            drawPanelSelector(g2, geometry.panelSelectorCard, geometry.panelLabel, slots);
+        }
         g2.setColor(SECTION);
         g2.fillRoundRect(area.x, area.y, area.width, area.height, 14, 14);
         g2.setColor(BORDER);
         g2.drawRoundRect(area.x, area.y, area.width, area.height, 14, 14);
 
-        boolean showPanelSelector = populatedPanelSlotCount(slots) > 1;
-        if (showPanelSelector) {
-            drawPanelSelector(g2, area, slots);
+        g2.setColor(TEXT);
+        g2.drawString("Job Layout", area.x + 14, area.y + 19);
+        if (selectedSlot != null && showPanelSelector) {
+            g2.setColor(MUTED_TEXT);
+            g2.drawString(selectedSlot.quadrant.label, area.x + 88, area.y + 19);
         }
-        int headerHeight = showPanelSelector ? 96 : JOB_HEADER_HEIGHT;
-        Rectangle content = new Rectangle(area.x + JOB_CONTENT_PADDING, area.y + headerHeight,
+        int headerHeight = JOB_HEADER_HEIGHT;
+        Rectangle content = new Rectangle(area.x + 12, area.y + headerHeight,
                 Math.max(1, area.width - JOB_CONTENT_PADDING * 2),
-                Math.max(1, area.height - headerHeight - JOB_CONTENT_PADDING));
+                Math.max(1, area.height - headerHeight - 12));
         Bounds bounds = new Bounds(visibleBoards, content);
         List<PlacementsHolderLocation<?>> drawnBoards = new ArrayList<>();
         for (PlacementsHolderLocation<?> boardLocation : visibleBoards) {
@@ -455,6 +513,45 @@ public class OperatorRuntimeCanvas extends JPanel {
             drawnBoards.add(boardLocation);
         }
         pruneHiddenSelection(drawnBoards);
+    }
+
+    static LayoutGeometry calculateLayoutGeometry(int width, int height, int columns, int rows,
+            boolean showPanelSelector) {
+        int toolWidth = Math.min(width - 20, 280);
+        Rectangle tool = new Rectangle(10, 8, toolWidth, 26);
+        Rectangle legend = new Rectangle(10, 40, toolWidth, 68);
+        int trayColumnWidth = Math.min(300, Math.max(230, width / 3));
+        int availableWidth = Math.max(1, width - trayColumnWidth - 34);
+        int jobY = showPanelSelector ? 108 : 46;
+        int availableHeight = Math.max(100, height - jobY - 14);
+        int desiredWidth = BOARD_WIDTH + (Math.max(1, columns) - 1) * (BOARD_WIDTH + BOARD_GAP);
+        int desiredHeight = BOARD_HEIGHT + (Math.max(1, rows) - 1) * (BOARD_HEIGHT + BOARD_GAP);
+        int cardWidth = Math.min(availableWidth,
+                Math.max(showPanelSelector ? 150 : 180, desiredWidth + 24));
+        int cardHeight = Math.min(availableHeight,
+                JOB_HEADER_HEIGHT + desiredHeight + 24);
+        Rectangle jobCard = new Rectangle(width - cardWidth - 18, jobY, cardWidth, cardHeight);
+        Rectangle title = new Rectangle(jobCard.x + 12, jobCard.y, jobCard.width - 24, JOB_HEADER_HEIGHT);
+        Rectangle selector = showPanelSelector
+                ? new Rectangle(jobCard.x + jobCard.width - 122, 8, 122, 66)
+                : null;
+        Rectangle panelLabel = selector == null ? null
+                : new Rectangle(selector.x, selector.y + selector.height + 6, selector.width, 16);
+        return new LayoutGeometry(tool, legend, jobCard, title, selector, panelLabel);
+    }
+
+    private int[] boardGridSize(List<PlacementsHolderLocation<?>> boards) {
+        List<Double> xs = new ArrayList<>();
+        List<Double> ys = new ArrayList<>();
+        for (PlacementsHolderLocation<?> board : boards) {
+            xs.add(board.getGlobalLocation().getX());
+            ys.add(board.getGlobalLocation().getY());
+        }
+        xs.sort(Comparator.naturalOrder());
+        ys.sort(Comparator.naturalOrder());
+        Bounds.removeDuplicates(xs);
+        Bounds.removeDuplicates(ys);
+        return new int[] { Math.max(1, xs.size()), Math.max(1, ys.size()) };
     }
 
     private void drawBoard(Graphics2D g2, Bounds bounds,
@@ -530,11 +627,12 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
 
-    private void drawPanelSelector(Graphics2D g2, Rectangle area, List<PanelSlot> slots) {
-        int cardWidth = 122;
-        int cardHeight = 76;
-        int x = area.x + area.width - cardWidth - 14;
-        int y = area.y + 12;
+    private void drawPanelSelector(Graphics2D g2, Rectangle card, Rectangle labelBounds,
+            List<PanelSlot> slots) {
+        int cardWidth = card.width;
+        int cardHeight = card.height;
+        int x = card.x;
+        int y = card.y;
         g2.setColor(new Color(40, 46, 55, 235));
         g2.fillRoundRect(x, y, cardWidth, cardHeight, 14, 14);
         g2.setColor(new Color(120, 135, 155));
@@ -543,7 +641,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         int cellH = 24;
         int gap = 6;
         int gridX = x + 11;
-        int gridY = y + 12;
+        int gridY = y + 5;
         for (PanelSlot slot : slots) {
             int col = slot.quadrant.right ? 1 : 0;
             int row = slot.quadrant.top ? 0 : 1;
@@ -562,7 +660,9 @@ public class OperatorRuntimeCanvas extends JPanel {
             }
         }
         g2.setColor(MUTED_TEXT);
-        g2.drawString("Panels", x + 42, y + cardHeight - 8);
+        int labelWidth = g2.getFontMetrics().stringWidth("Panels");
+        g2.drawString("Panels", labelBounds.x + (labelBounds.width - labelWidth) / 2,
+                labelBounds.y + 12);
     }
 
     private List<PanelSlot> getPanelSlots(Job job) {
@@ -690,6 +790,7 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     private void selectPanelQuadrant(PanelQuadrant quadrant) {
+        clearPocketSelection();
         selectedPanelQuadrant = quadrant;
         selectedBoards.clear();
         dragRectangle = null;
@@ -721,6 +822,7 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     private void selectBoard(PlacementsHolderLocation<?> boardLocation, boolean extendSelection) {
+        clearPocketSelection();
         if (!extendSelection) {
             selectedBoards.clear();
         }
@@ -736,6 +838,7 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     private void selectBoardsIn(Rectangle rectangle, boolean extendSelection) {
+        clearPocketSelection();
         if (!extendSelection) {
             selectedBoards.clear();
         }
@@ -772,6 +875,22 @@ public class OperatorRuntimeCanvas extends JPanel {
         else if (editMode == EditMode.PLACEMENT) {
             listener.showPlacementContextMenu(this, e.getX(), e.getY(), getSelectedBoards());
         }
+    }
+
+    private boolean isSelectedPocket(JEDEC_TrayFeeder feeder, int index) {
+        return selectedPocketTarget != null && selectedPocketTarget.getFeeder() == feeder
+                && selectedPocketTarget.getFeedIndexBase0() == index;
+    }
+
+    private void selectTrayPocket(TrayPocketHit hit) {
+        selectedBoards.clear();
+        selectedPocketTarget = CameraTarget.trayPocket(hit.feeder, hit.feedIndexBase0);
+        dragRectangle = null;
+        if (listener != null) {
+            listener.boardSelectionChanged(getSelectedBoards());
+            listener.trayPocketSelectionChanged(hit.feeder, hit.feedIndexBase0);
+        }
+        repaint();
     }
 
     private BoardHit findBoard(int x, int y) {
@@ -900,6 +1019,25 @@ public class OperatorRuntimeCanvas extends JPanel {
             this.feedIndexBase0 = feedIndexBase0;
             this.displayPosition = displayPosition;
             this.bounds = bounds;
+        }
+    }
+
+    static final class LayoutGeometry {
+        final Rectangle toolCard;
+        final Rectangle legendCard;
+        final Rectangle jobCard;
+        final Rectangle jobTitle;
+        final Rectangle panelSelectorCard;
+        final Rectangle panelLabel;
+
+        LayoutGeometry(Rectangle toolCard, Rectangle legendCard, Rectangle jobCard,
+                Rectangle jobTitle, Rectangle panelSelectorCard, Rectangle panelLabel) {
+            this.toolCard = toolCard;
+            this.legendCard = legendCard;
+            this.jobCard = jobCard;
+            this.jobTitle = jobTitle;
+            this.panelSelectorCard = panelSelectorCard;
+            this.panelLabel = panelLabel;
         }
     }
 

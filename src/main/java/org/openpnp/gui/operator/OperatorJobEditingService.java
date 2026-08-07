@@ -13,6 +13,7 @@ import org.openpnp.machine.reference.feeder.ReferenceTrayFeeder;
 import org.openpnp.model.Configuration;
 import org.openpnp.model.Job;
 import org.openpnp.model.Part;
+import org.openpnp.model.PanelLocation;
 import org.openpnp.model.Placement;
 import org.openpnp.model.PlacementsHolderLocation;
 import org.openpnp.spi.Feeder;
@@ -63,6 +64,23 @@ public class OperatorJobEditingService {
         boardLocation.setLocallyEnabled(enabled);
         job.storeEnabledState(boardLocation, null, enabled);
         persistJob(job);
+    }
+
+    /** Applies a panel parent state as one atomic operator edit and persists once. */
+    public void setPanelEnabled(Job job, PanelLocation panelLocation, boolean enabled) throws Exception {
+        requireJob(job);
+        setLocationTreeEnabled(job, panelLocation, enabled);
+        persistJob(job);
+    }
+
+    private void setLocationTreeEnabled(Job job, PlacementsHolderLocation<?> location, boolean enabled) {
+        location.setLocallyEnabled(enabled);
+        job.storeEnabledState(location, null, enabled);
+        if (location instanceof PanelLocation) {
+            for (PlacementsHolderLocation<?> child : ((PanelLocation) location).getChildren()) {
+                setLocationTreeEnabled(job, child, enabled);
+            }
+        }
     }
 
     public void setPlacementEnabled(Job job, PlacementsHolderLocation<?> boardLocation,
@@ -167,7 +185,7 @@ public class OperatorJobEditingService {
         return new File(file.getParentFile(), file.getName() + ".operator-progress.properties");
     }
 
-    private void persistJob(Job job) throws Exception {
+    void persistJob(Job job) throws Exception {
         if (job.getFile() != null) {
             Configuration.get().saveJob(job, job.getFile());
         }
