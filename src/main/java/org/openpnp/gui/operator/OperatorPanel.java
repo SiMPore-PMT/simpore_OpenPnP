@@ -449,12 +449,24 @@ public class OperatorPanel extends JPanel {
         if (!ready) reason = machineNotReadyReason();
         else if (activeJob) reason = "Camera navigation is unavailable while a job is running or paused.";
         else if (target == null) reason = "Select exactly one board or one JEDEC tray pocket.";
-        else if (tool == null || tool.getHead() == null || tool.getHead().getDefaultCamera() == null) {
+        else if (!selectedToolHasDefaultCamera(tool)) {
             reason = "The selected tool has no head camera.";
         }
         moveCameraButton.setEnabled(reason == null);
         moveCameraButton.setToolTipText(reason == null
                 ? "Move the camera to the selected board or tray pocket" : reason);
+    }
+
+    private boolean selectedToolHasDefaultCamera(HeadMountable tool) {
+        if (tool == null || tool.getHead() == null) {
+            return false;
+        }
+        try {
+            return tool.getHead().getDefaultCamera() != null;
+        }
+        catch (Exception e) {
+            return false;
+        }
     }
 
     private void clearPocketSelection() {
