@@ -5,16 +5,34 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.awt.Component;
+import java.awt.Graphics2D;
+import java.awt.Rectangle;
 import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.util.Set;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder;
 import org.openpnp.model.Board;
 import org.openpnp.model.BoardLocation;
+import org.openpnp.model.Configuration;
+import org.openpnp.model.Job;
 import org.openpnp.model.Panel;
 import org.openpnp.model.PanelLocation;
+import org.openpnp.model.Placement;
+import org.openpnp.model.PlacementsHolderLocation;
 
 public class OperatorRuntimeCanvasTest {
+    @BeforeAll
+    public static void initializeConfiguration() throws Exception {
+        File workingDirectory = new File(com.google.common.io.Files.createTempDir(), ".openpnp");
+        Configuration.initialize(workingDirectory);
+        Configuration.get().load();
+    }
+
     @Test
     public void everyPocketIndexIsStoredWithoutChangingTrayProgress() {
         OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
@@ -80,5 +98,62 @@ public class OperatorRuntimeCanvasTest {
         assertEquals(108 + 28 + 76 + 24,
                 geometry.jobCard.y + geometry.jobCard.height);
         assertTrue(geometry.jobCard.y + geometry.jobCard.height < 800);
+    }
+
+    @Test
+    public void runningSelectionKeepsCanvasAndBoardHitGeometryStable() {
+        OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
+        Board board = new Board();
+        for (int i = 0; i < 24; i++) {
+            board.addPlacement(new Placement("P" + i));
+        }
+        BoardLocation boardLocation = new BoardLocation(board);
+        Job job = new Job();
+        job.getRootPanelLocation().getPanel().addChild(boardLocation);
+        final PlacementsHolderLocation<?>[] inspected = new PlacementsHolderLocation<?>[1];
+        canvas.setListener(new NoOpListener() {
+            @Override
+            public void boardClicked(PlacementsHolderLocation<?> selected) {
+                inspected[0] = selected;
+            }
+        });
+        canvas.setJob(job);
+        canvas.setEditingAllowed(false);
+        canvas.setBounds(11, 13, 900, 600);
+
+        paint(canvas);
+        Rectangle canvasBounds = canvas.getBounds();
+        Rectangle hitBefore = canvas.getBoardHitBounds(boardLocation);
+        canvas.dispatchEvent(new MouseEvent(canvas, MouseEvent.MOUSE_RELEASED, 0, 0,
+                hitBefore.x + hitBefore.width / 2, hitBefore.y + hitBefore.height / 2,
+                1, false, MouseEvent.BUTTON1));
+        paint(canvas);
+
+        assertSame(boardLocation, inspected[0]);
+        assertTrue(canvas.getSelectedBoards().contains(boardLocation));
+        assertEquals(canvasBounds, canvas.getBounds());
+        assertEquals(hitBefore, canvas.getBoardHitBounds(boardLocation));
+    }
+
+    private static void paint(OperatorRuntimeCanvas canvas) {
+        BufferedImage image = new BufferedImage(canvas.getWidth(), canvas.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = image.createGraphics();
+        canvas.paint(graphics);
+        graphics.dispose();
+    }
+
+    private static class NoOpListener implements OperatorRuntimeCanvas.Listener {
+        @Override public void boardClicked(PlacementsHolderLocation<?> boardLocation) { }
+        @Override public void boardSelectionChanged(Set<PlacementsHolderLocation<?>> selection) { }
+        @Override public void showBoardContextMenu(Component invoker, int x, int y,
+                Set<PlacementsHolderLocation<?>> selection) { }
+        @Override public void showPlacementContextMenu(Component invoker, int x, int y,
+                Set<PlacementsHolderLocation<?>> selection) { }
+        @Override public void showTrayPocketContextMenu(Component invoker, int x, int y,
+                JEDEC_TrayFeeder feeder, int feedIndexBase0, int displayPosition) { }
+        @Override public void resetTray(JEDEC_TrayFeeder feeder) { }
+        @Override public void enableTray(JEDEC_TrayFeeder feeder) { }
+        @Override public void panelSelectionChanged(PlacementsHolderLocation<?> panelLocation) { }
+        @Override public void trayPocketSelectionChanged(JEDEC_TrayFeeder feeder, int feedIndexBase0) { }
     }
 }
