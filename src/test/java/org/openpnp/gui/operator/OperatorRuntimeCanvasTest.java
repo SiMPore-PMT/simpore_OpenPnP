@@ -20,6 +20,7 @@ import org.openpnp.model.Board;
 import org.openpnp.model.BoardLocation;
 import org.openpnp.model.Configuration;
 import org.openpnp.model.Job;
+import org.openpnp.model.LengthUnit;
 import org.openpnp.model.Panel;
 import org.openpnp.model.PanelLocation;
 import org.openpnp.model.Placement;
@@ -133,6 +134,68 @@ public class OperatorRuntimeCanvasTest {
         assertTrue(canvas.getSelectedBoards().contains(boardLocation));
         assertEquals(canvasBounds, canvas.getBounds());
         assertEquals(hitBefore, canvas.getBoardHitBounds(boardLocation));
+    }
+
+    @Test
+    public void runtimeBoardCalibrationDoesNotScatterLayoutCards() {
+        Job job = new Job();
+        BoardLocation first = boardAt("First", 0, 0);
+        BoardLocation second = boardAt("Second", 40, 0);
+        BoardLocation third = boardAt("Third", 0, 30);
+        BoardLocation fourth = boardAt("Fourth", 40, 30);
+        job.getRootPanelLocation().getPanel().addChild(first);
+        job.getRootPanelLocation().getPanel().addChild(second);
+        job.getRootPanelLocation().getPanel().addChild(third);
+        job.getRootPanelLocation().getPanel().addChild(fourth);
+
+        OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
+        canvas.setBounds(0, 0, 900, 600);
+        canvas.setJob(job);
+        canvas.setEditingAllowed(false);
+        paint(canvas);
+        Rectangle firstBefore = canvas.getBoardHitBounds(first);
+        Rectangle secondBefore = canvas.getBoardHitBounds(second);
+        Rectangle thirdBefore = canvas.getBoardHitBounds(third);
+        Rectangle fourthBefore = canvas.getBoardHitBounds(fourth);
+
+        // Fiducial alignment can update individual global board locations while a
+        // job is running. These machine coordinates must not become UI grid axes.
+        second.setGlobalLocation(new Location(LengthUnit.Millimeters, 43.7, -2.4, 0, 0));
+        third.setGlobalLocation(new Location(LengthUnit.Millimeters, -3.1, 34.2, 0, 0));
+        fourth.setGlobalLocation(new Location(LengthUnit.Millimeters, 45.5, 35.8, 0, 0));
+        paint(canvas);
+
+        assertEquals(firstBefore, canvas.getBoardHitBounds(first));
+        assertEquals(secondBefore, canvas.getBoardHitBounds(second));
+        assertEquals(thirdBefore, canvas.getBoardHitBounds(third));
+        assertEquals(fourthBefore, canvas.getBoardHitBounds(fourth));
+
+        // Stopping enables editing again. Starting a second run must not replace
+        // the original visual grid with the calibrated machine coordinates.
+        canvas.selectBoardTarget(fourth);
+        canvas.setEditingAllowed(true);
+        canvas.setJob(job);
+        paint(canvas);
+        assertTrue(canvas.getSelectedBoards().contains(fourth));
+        assertEquals(firstBefore, canvas.getBoardHitBounds(first));
+        assertEquals(secondBefore, canvas.getBoardHitBounds(second));
+        assertEquals(thirdBefore, canvas.getBoardHitBounds(third));
+        assertEquals(fourthBefore, canvas.getBoardHitBounds(fourth));
+
+        canvas.setEditingAllowed(false);
+        paint(canvas);
+        assertEquals(firstBefore, canvas.getBoardHitBounds(first));
+        assertEquals(secondBefore, canvas.getBoardHitBounds(second));
+        assertEquals(thirdBefore, canvas.getBoardHitBounds(third));
+        assertEquals(fourthBefore, canvas.getBoardHitBounds(fourth));
+    }
+
+    private static BoardLocation boardAt(String id, double x, double y) {
+        Board board = new Board();
+        board.setName(id);
+        BoardLocation location = new BoardLocation(board);
+        location.setLocation(new Location(LengthUnit.Millimeters, x, y, 0, 0));
+        return location;
     }
 
     private static void paint(OperatorRuntimeCanvas canvas) {

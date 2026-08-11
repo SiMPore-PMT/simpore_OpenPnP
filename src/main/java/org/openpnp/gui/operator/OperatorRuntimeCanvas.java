@@ -21,6 +21,7 @@ import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -86,6 +87,8 @@ public class OperatorRuntimeCanvas extends JPanel {
     private Listener listener;
     private EditMode editMode = EditMode.NONE;
     private boolean editingAllowed;
+    private final IdentityHashMap<PlacementsHolderLocation<?>, Location> runtimeLayoutLocations =
+            new IdentityHashMap<>();
     private final Set<PlacementsHolderLocation<?>> selectedBoards = new LinkedHashSet<>();
     private final List<BoardHit> boardHits = new ArrayList<>();
     private final List<TrayPocketHit> trayPocketHits = new ArrayList<>();
@@ -203,9 +206,28 @@ public class OperatorRuntimeCanvas extends JPanel {
             selectedBoards.clear();
             selectedPanelQuadrant = null;
             selectedPocketTarget = null;
+            this.job = job;
+            captureRuntimeLayout();
         }
-        this.job = job;
         repaint();
+    }
+
+    private void captureRuntimeLayout() {
+        runtimeLayoutLocations.clear();
+        if (job == null) {
+            return;
+        }
+        for (PlacementsHolderLocation<?> board : job.getBoardLocations()) {
+            runtimeLayoutLocations.put(board, board.getGlobalLocation());
+        }
+    }
+
+    private Location getLayoutLocation(PlacementsHolderLocation<?> board) {
+        Location location = runtimeLayoutLocations.get(board);
+        if (location != null) {
+            return location;
+        }
+        return board.getGlobalLocation();
     }
 
     public void clearSelection() {
@@ -553,13 +575,13 @@ public class OperatorRuntimeCanvas extends JPanel {
         List<Double> xs = new ArrayList<>();
         List<Double> ys = new ArrayList<>();
         for (PlacementsHolderLocation<?> board : boards) {
-            xs.add(board.getGlobalLocation().getX());
-            ys.add(board.getGlobalLocation().getY());
+            xs.add(getLayoutLocation(board).getX());
+            ys.add(getLayoutLocation(board).getY());
         }
         xs.sort(Comparator.naturalOrder());
         ys.sort(Comparator.naturalOrder());
-        Bounds.removeDuplicates(xs);
-        Bounds.removeDuplicates(ys);
+        removeDuplicates(xs);
+        removeDuplicates(ys);
         return new int[] { Math.max(1, xs.size()), Math.max(1, ys.size()) };
     }
 
@@ -1050,7 +1072,25 @@ public class OperatorRuntimeCanvas extends JPanel {
         }
     }
 
-    private static class Bounds {
+    private static void removeDuplicates(List<Double> values) {
+        for (int i = values.size() - 1; i > 0; i--) {
+            if (Math.abs(values.get(i) - values.get(i - 1)) < 0.001) {
+                values.remove(i);
+            }
+        }
+    }
+
+    private static int nearest(List<Double> values, double value) {
+        int nearest = 0;
+        for (int i = 1; i < values.size(); i++) {
+            if (Math.abs(values.get(i) - value) < Math.abs(values.get(nearest) - value)) {
+                nearest = i;
+            }
+        }
+        return nearest;
+    }
+
+    private class Bounds {
         private final List<Double> columns = new ArrayList<>();
         private final List<Double> rows = new ArrayList<>();
         private final double left;
@@ -1065,7 +1105,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         Bounds(List<? extends PlacementsHolderLocation<?>> boards, Rectangle area) {
             content = new Rectangle(area);
             for (PlacementsHolderLocation<?> board : boards) {
-                Location location = board.getGlobalLocation();
+                Location location = getLayoutLocation(board);
                 columns.add(location.getX());
                 rows.add(location.getY());
             }
@@ -1087,29 +1127,13 @@ public class OperatorRuntimeCanvas extends JPanel {
         }
 
         Rectangle rectangle(PlacementsHolderLocation<?> board) {
-            int x = (int) Math.round(left + nearest(columns, board.getGlobalLocation().getX()) * horizontalStep);
-            int y = (int) Math.round(top + nearest(rows, board.getGlobalLocation().getY()) * verticalStep);
+            Location location = getLayoutLocation(board);
+            int x = (int) Math.round(left + nearest(columns, location.getX()) * horizontalStep);
+            int y = (int) Math.round(top + nearest(rows, location.getY()) * verticalStep);
             x = Math.max(content.x, Math.min(content.x + content.width - boardWidth, x));
             y = Math.max(content.y, Math.min(content.y + content.height - boardHeight, y));
             return new Rectangle(x, y, boardWidth, boardHeight);
         }
 
-        private static void removeDuplicates(List<Double> values) {
-            for (int i = values.size() - 1; i > 0; i--) {
-                if (Math.abs(values.get(i) - values.get(i - 1)) < 0.001) {
-                    values.remove(i);
-                }
-            }
-        }
-
-        private static int nearest(List<Double> values, double value) {
-            int nearest = 0;
-            for (int i = 1; i < values.size(); i++) {
-                if (Math.abs(values.get(i) - value) < Math.abs(values.get(nearest) - value)) {
-                    nearest = i;
-                }
-            }
-            return nearest;
-        }
     }
 }
