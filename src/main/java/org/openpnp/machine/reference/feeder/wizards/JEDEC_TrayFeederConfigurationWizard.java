@@ -127,6 +127,8 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
     private JComboBox<AbstractVisionSettings> fiducialVisionSettingsCombo;
     private JCheckBox useAdvancedCameraCalibration;
     private JCheckBox useAsyncGcodeMotion;
+    private JCheckBox rotateNozzleAtPick;
+    private JCheckBox useDetectedAngleForPickRotation;
     private JTextField recenterToleranceMm;
     private JTextField recenterMaxPasses;
     private TrayPreviewPanel trayPreviewPanel;
@@ -486,6 +488,16 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         recenterMaxPasses.setColumns(10);
         visionPanel.add(recenterMaxPasses, "4, 10");
 
+        rotateNozzleAtPick = new JCheckBox("Rotate Nozzle At Pick");
+        rotateNozzleAtPick.setToolTipText(
+                "Rotate to the configured tray and component orientation during the pick move.");
+        visionPanel.add(rotateNozzleAtPick, "2, 12, 3, 1");
+
+        useDetectedAngleForPickRotation = new JCheckBox("Use Detected Angle For Pick Rotation");
+        useDetectedAngleForPickRotation.setToolTipText(
+                "Use the vision-detected angle for pick rotation instead of treating it as diagnostic only.");
+        visionPanel.add(useDetectedAngleForPickRotation, "2, 14, 5, 1");
+
     }
 
     // ---------- Bindings ----------
@@ -520,6 +532,8 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         addWrappedBinding(feeder, "pickRetryCount", pickRetryCount, "text", intConverter);
         addWrappedBinding(feeder, "useAdvancedCameraCalibration", useAdvancedCameraCalibration, "selected");
         addWrappedBinding(feeder, "useAsyncGcodeMotion", useAsyncGcodeMotion, "selected");
+        addWrappedBinding(feeder, "rotateNozzleAtPick", rotateNozzleAtPick, "selected");
+        addWrappedBinding(feeder, "useDetectedAngleForPickRotation", useDetectedAngleForPickRotation, "selected");
         addWrappedBinding(feeder, "recenterToleranceMm", recenterToleranceMm, "text", doubleConverter);
         addWrappedBinding(feeder, "recenterMaxPasses", recenterMaxPasses, "text", intConverter);
         addWrappedBinding(feeder, "fiducialVisionSettingsId", fiducialVisionSettingsCombo, "selectedItem",

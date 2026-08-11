@@ -49,9 +49,6 @@ import java.util.List;
 public class JEDEC_TrayFeeder extends ReferenceFeeder {
     public static final double DEFAULT_RECENTER_TOLERANCE_MM = 0.02;
     public static final int DEFAULT_RECENTER_MAX_PASSES = 3;
-    private static final double PICK_ROTATION_ZERO_GUARD_DEG = 0.001;
-    private static final double PICK_ROTATION_ZERO_DEADBAND_DEG = 0.0000001;
-
     /**
      * New -> From advancedLoosePartFeeder
      */
@@ -66,6 +63,12 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
 
     @Attribute(required = false)
     private boolean useAsyncGcodeMotion = false;
+
+    @Attribute(required = false)
+    private boolean rotateNozzleAtPick = false;
+
+    @Attribute(required = false)
+    private boolean useDetectedAngleForPickRotation = false;
 
     @Attribute(required = false)
     private double recenterToleranceMm = DEFAULT_RECENTER_TOLERANCE_MM;
@@ -350,11 +353,8 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
                 });
                 RotatedRect result = results.get(0);
                 Location partLocation = getPixelLocation(camera, result.center.x, result.center.y);
-                // The top-camera RotatedRect angle is required for square die / square
-                // nozzle pick alignment and is always used for pick rotation. The configured
-                // componentRotationInTray is included in pickLocation.R, not applied later,
-                // so OpenPnP's normal rotation-mode and runout compensation path handles
-                // the pick move.
+                // Keep the detected center for XY correction. The detected angle is retained
+                // for diagnostics and only affects pick rotation when explicitly enabled.
                 lastDetectedAngle = result.angle;
                 double trayVisionRotation = calculateTrayVisionPickRotation(getLocation().getRotation(), result.angle);
                 double componentRotation = normalizeComponentRotationInTray(getComponentRotationInTray());
@@ -398,27 +398,31 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     }
 
     double getPickRotation(Location startPoint, double detectedAngle) {
-        return calculatePickRotation(getLocation().getRotation(), detectedAngle, getComponentRotationInTray());
+        return calculatePickRotation(
+                isRotateNozzleAtPick(),
+                isUseDetectedAngleForPickRotation(),
+                getLocation().getRotation(),
+                startPoint.getRotation(),
+                getComponentRotationInTray(),
+                detectedAngle);
     }
 
-    public static double calculatePickRotation(double trayRotation,
-            double detectedAngle, double componentRotationInTray) {
-        double trayVisionRotation = calculateTrayVisionPickRotation(trayRotation, detectedAngle);
-        double componentRotation = normalizeComponentRotationInTray(componentRotationInTray);
-
-        // The full intended pick orientation must be present in pickLocation.R so
-        // OpenPnP's prepareForPickAndPlaceArticulation() and ReferenceNozzle.toHeadLocation()
-        // apply rotation mode and runout compensation during the normal pick move.
-        double pickRotation = Utils2D.angleNorm(trayVisionRotation + componentRotation, 180);
-        if (componentRotation == 0 && Math.abs(pickRotation) < PICK_ROTATION_ZERO_DEADBAND_DEG) {
-            // On this JEDEC tray/nozzle combination the exact 0° pick orientation can trip a
-            // downstream identity/no-op edge case in rotation/runout compensation. Nudge only
-            // the exact-zero, component-0 case by an orientation-insignificant epsilon so the
-            // normal compensated pick path remains active. Nonzero component rotations are left
-            // behaviorally unchanged.
-            return PICK_ROTATION_ZERO_GUARD_DEG;
+    public static double calculatePickRotation(
+            boolean rotateNozzleAtPick,
+            boolean useDetectedAngleForPickRotation,
+            double trayRotation,
+            double nominalPocketRotation,
+            double componentRotationInTray,
+            double detectedAngle) {
+        if (useDetectedAngleForPickRotation) {
+            return Utils2D.angleNorm(-(detectedAngle + trayRotation), 180);
         }
-        return pickRotation;
+        if (rotateNozzleAtPick) {
+            return Utils2D.angleNorm(
+                    trayRotation + normalizeComponentRotationInTray(componentRotationInTray),
+                    180);
+        }
+        return trayRotation;
     }
 
     public static double calculateTrayVisionPickRotation(double trayRotation, double detectedAngle) {
@@ -741,6 +745,26 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         boolean oldValue = this.useAsyncGcodeMotion;
         this.useAsyncGcodeMotion = useAsyncGcodeMotion;
         firePropertyChange("useAsyncGcodeMotion", oldValue, useAsyncGcodeMotion);
+    }
+
+    public boolean isRotateNozzleAtPick() {
+        return rotateNozzleAtPick;
+    }
+
+    public void setRotateNozzleAtPick(boolean rotateNozzleAtPick) {
+        boolean oldValue = this.rotateNozzleAtPick;
+        this.rotateNozzleAtPick = rotateNozzleAtPick;
+        firePropertyChange("rotateNozzleAtPick", oldValue, rotateNozzleAtPick);
+    }
+
+    public boolean isUseDetectedAngleForPickRotation() {
+        return useDetectedAngleForPickRotation;
+    }
+
+    public void setUseDetectedAngleForPickRotation(boolean useDetectedAngleForPickRotation) {
+        boolean oldValue = this.useDetectedAngleForPickRotation;
+        this.useDetectedAngleForPickRotation = useDetectedAngleForPickRotation;
+        firePropertyChange("useDetectedAngleForPickRotation", oldValue, useDetectedAngleForPickRotation);
     }
 
     public double getRecenterToleranceMm() {
