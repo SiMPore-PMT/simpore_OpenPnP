@@ -184,6 +184,9 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     public void setEditingAllowed(boolean editingAllowed) {
+        if (this.editingAllowed && !editingAllowed) {
+            captureRuntimeLayout();
+        }
         this.editingAllowed = editingAllowed;
         repaint();
     }
@@ -209,6 +212,8 @@ public class OperatorRuntimeCanvas extends JPanel {
             this.job = job;
             captureRuntimeLayout();
         }
+        this.job = job;
+        captureRuntimeLayout();
         repaint();
     }
 
