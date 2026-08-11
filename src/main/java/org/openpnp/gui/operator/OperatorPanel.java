@@ -82,6 +82,7 @@ import com.google.common.eventbus.Subscribe;
 
 @SuppressWarnings("serial")
 public class OperatorPanel extends JPanel {
+    private static final int INSPECTOR_VISIBLE_ROWS = 10;
     private static final Color STATUS_READY = new Color(39, 128, 68);
     private static final Color STATUS_WAITING = new Color(160, 104, 0);
     private static final Color STATUS_STOPPED = new Color(90, 90, 90);
@@ -321,7 +322,8 @@ public class OperatorPanel extends JPanel {
         placementDetailsTable.setDefaultRenderer(Boolean.class, new PlacementDetailsRenderer());
         detailsPanel.add(selectionLabel, BorderLayout.NORTH);
         detailsPanel.add(placementDetailsScrollPane, BorderLayout.CENTER);
-        updateDetailsPanelSize();
+        setDetailsPanelPreferredSize(detailsPanel, placementDetailsTable,
+                placementDetailsScrollPane, selectionLabel);
         return detailsPanel;
     }
 
@@ -752,7 +754,6 @@ public class OperatorPanel extends JPanel {
                 placementDetailsModel.setRowCount(0);
                 detailRows.clear();
                 updatingDetails = false;
-                updateDetailsPanelSize();
                 updateButtons();
             }
         };
@@ -919,7 +920,6 @@ public class OperatorPanel extends JPanel {
         if (selectedBoards.isEmpty()) {
             selectionLabel.setText("Select a board to inspect placements.");
             updatingDetails = false;
-            updateDetailsPanelSize();
             return;
         }
         PlacementsHolderLocation<?> board = selectedBoards.iterator().next();
@@ -944,7 +944,6 @@ public class OperatorPanel extends JPanel {
             addPlacementRows(board, false);
         }
         updatingDetails = false;
-        updateDetailsPanelSize();
     }
 
     private void addPlacementRows(PlacementsHolderLocation<?> board, boolean qualifyId) {
@@ -980,20 +979,16 @@ public class OperatorPanel extends JPanel {
         return count;
     }
 
-    private void updateDetailsPanelSize() {
-        if (detailsPanel == null) {
-            return;
-        }
-        int rows = Math.max(2, Math.min(10, Math.max(placementDetailsModel.getRowCount(), 1)));
+    static void setDetailsPanelPreferredSize(JPanel detailsPanel, JTable placementDetailsTable,
+            JScrollPane placementDetailsScrollPane, JLabel selectionLabel) {
         int headerHeight = placementDetailsTable.getTableHeader() == null ? placementDetailsTable.getRowHeight()
                 : placementDetailsTable.getTableHeader().getPreferredSize().height;
-        int tableHeight = headerHeight + rows * placementDetailsTable.getRowHeight()
+        int tableHeight = headerHeight + INSPECTOR_VISIBLE_ROWS * placementDetailsTable.getRowHeight()
                 + placementDetailsScrollPane.getHorizontalScrollBar().getPreferredSize().height;
         int labelHeight = selectionLabel.getPreferredSize().height;
         Insets insets = detailsPanel.getInsets();
         int height = Math.max(110, Math.min(260, tableHeight + labelHeight + insets.top + insets.bottom + 22));
         detailsPanel.setPreferredSize(new Dimension(320, height));
-        detailsPanel.revalidate();
     }
 
     private List<RowPlacement> filteredPlacements(Set<PlacementsHolderLocation<?>> boards) {

@@ -189,6 +189,15 @@ public class OperatorRuntimeCanvas extends JPanel {
         return new LinkedHashSet<>(selectedBoards);
     }
 
+    Rectangle getBoardHitBounds(PlacementsHolderLocation<?> boardLocation) {
+        for (BoardHit hit : boardHits) {
+            if (hit.boardLocation == boardLocation) {
+                return new Rectangle(hit.bounds);
+            }
+        }
+        return null;
+    }
+
     public void setJob(Job job) {
         if (this.job != job) {
             selectedBoards.clear();
