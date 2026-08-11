@@ -21,6 +21,7 @@ import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -87,6 +88,7 @@ public class OperatorRuntimeCanvas extends JPanel {
     private Listener listener;
     private EditMode editMode = EditMode.NONE;
     private boolean editingAllowed;
+    private final HashMap<String, Location> runtimeLayoutLocations = new HashMap<>();
     private final IdentityHashMap<PlacementsHolderLocation<?>, Location> runtimeLayoutLocations =
             new IdentityHashMap<>();
     private final Set<PlacementsHolderLocation<?>> selectedBoards = new LinkedHashSet<>();
@@ -223,12 +225,12 @@ public class OperatorRuntimeCanvas extends JPanel {
             return;
         }
         for (PlacementsHolderLocation<?> board : job.getBoardLocations()) {
-            runtimeLayoutLocations.put(board, board.getGlobalLocation());
+            runtimeLayoutLocations.put(board.getUniqueId(), board.getGlobalLocation());
         }
     }
 
     private Location getLayoutLocation(PlacementsHolderLocation<?> board) {
-        Location location = runtimeLayoutLocations.get(board);
+        Location location = runtimeLayoutLocations.get(board.getUniqueId());
         if (location != null) {
             return location;
         }

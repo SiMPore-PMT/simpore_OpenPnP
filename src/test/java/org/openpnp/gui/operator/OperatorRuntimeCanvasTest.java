@@ -188,6 +188,16 @@ public class OperatorRuntimeCanvasTest {
         assertEquals(secondBefore, canvas.getBoardHitBounds(second));
         assertEquals(thirdBefore, canvas.getBoardHitBounds(third));
         assertEquals(fourthBefore, canvas.getBoardHitBounds(fourth));
+
+        // A job refresh/reset may rebuild location objects while retaining their
+        // stable job IDs. The cached layout must survive that identity change.
+        BoardLocation replacement = boardAt("Replacement", 43.7, -2.4);
+        replacement.setId(second.getId());
+        job.getRootPanelLocation().removeChild(second);
+        job.getRootPanelLocation().addChild(replacement);
+        canvas.setJob(job);
+        paint(canvas);
+        assertEquals(secondBefore, canvas.getBoardHitBounds(replacement));
     }
 
     private static BoardLocation boardAt(String id, double x, double y) {
