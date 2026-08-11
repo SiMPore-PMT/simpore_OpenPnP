@@ -88,9 +88,7 @@ public class OperatorRuntimeCanvas extends JPanel {
     private Listener listener;
     private EditMode editMode = EditMode.NONE;
     private boolean editingAllowed;
-    private final HashMap<String, Location> runtimeLayoutLocations = new HashMap<>();
-    private final IdentityHashMap<PlacementsHolderLocation<?>, Location> runtimeLayoutLocations =
-            new IdentityHashMap<>();
+    private final HashMap<String, Location> stableLayoutLocationsById = new HashMap<>();
     private final Set<PlacementsHolderLocation<?>> selectedBoards = new LinkedHashSet<>();
     private final List<BoardHit> boardHits = new ArrayList<>();
     private final List<TrayPocketHit> trayPocketHits = new ArrayList<>();
@@ -214,23 +212,21 @@ public class OperatorRuntimeCanvas extends JPanel {
             this.job = job;
             captureRuntimeLayout();
         }
-        this.job = job;
-        captureRuntimeLayout();
         repaint();
     }
 
     private void captureRuntimeLayout() {
-        runtimeLayoutLocations.clear();
+        stableLayoutLocationsById.clear();
         if (job == null) {
             return;
         }
         for (PlacementsHolderLocation<?> board : job.getBoardLocations()) {
-            runtimeLayoutLocations.put(board.getUniqueId(), board.getGlobalLocation());
+            stableLayoutLocationsById.put(board.getUniqueId(), board.getGlobalLocation());
         }
     }
 
     private Location getLayoutLocation(PlacementsHolderLocation<?> board) {
-        Location location = runtimeLayoutLocations.get(board.getUniqueId());
+        Location location = stableLayoutLocationsById.get(board.getUniqueId());
         if (location != null) {
             return location;
         }
