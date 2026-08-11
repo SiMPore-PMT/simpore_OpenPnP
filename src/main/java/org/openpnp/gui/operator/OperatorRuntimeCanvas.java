@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -183,6 +184,9 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     public void setEditingAllowed(boolean editingAllowed) {
+        if (this.editingAllowed && !editingAllowed) {
+            captureRuntimeLayout();
+        }
         this.editingAllowed = editingAllowed;
         repaint();
     }
