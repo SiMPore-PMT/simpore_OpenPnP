@@ -178,6 +178,20 @@ public class ReferencePnpJobProcessor extends AbstractPnpJobProcessor {
     
     public ReferencePnpJobProcessor() {
     }
+
+    /**
+     * Returns the runtime placement for the exact board instance and placement ID. Runtime entries
+     * are prepared before the {@code Job.Starting} event is fired.
+     *
+     * @return the matching runtime placement, or {@code null} when no entry was prepared
+     */
+    public JobPlacement getJobPlacement(BoardLocation boardLocation, String placementId) {
+        return jobPlacements.stream()
+                .filter(jobPlacement -> jobPlacement.getBoardLocation() == boardLocation)
+                .filter(jobPlacement -> jobPlacement.getPlacement().getId().equals(placementId))
+                .findFirst()
+                .orElse(null);
+    }
     
     public synchronized void initialize(Job job) throws Exception {
         if (job == null) {
@@ -303,12 +317,28 @@ public class ReferencePnpJobProcessor extends AbstractPnpJobProcessor {
                 checkDuplicateRefs(boardLocation);
                 
                 for (Placement placement : boardLocation.getBoard().getPlacements()) {
-                    // Ignore placements that aren't placements
-                    if (placement.getType() != Placement.Type.Placement) {
+                    if (!job.retrieveEnabledState(boardLocation, placement)) {
                         continue;
                     }
-                    
-                    if (!placement.isEnabled()) {
+
+                    // Ignore placements that aren't on the side of the board we're processing.
+                    if (placement.getSide() != boardLocation.getGlobalSide()) {
+                        continue;
+                    }
+
+                    // Dispense placements are performed by Job.Starting scripts. Give those scripts
+                    // a runtime entry, but deliberately skip all ordinary PnP setup validation.
+                    if (placement.getType() == Placement.Type.Dispense) {
+                        JobPlacement jobPlacement = new JobPlacement(boardLocation, placement);
+                        if (job.retrievePlacedStatus(boardLocation, placement.getId())) {
+                            jobPlacement.setStatus(JobPlacement.Status.Complete);
+                        }
+                        jobPlacements.add(jobPlacement);
+                        continue;
+                    }
+
+                    // Ignore placements that aren't placements
+                    if (placement.getType() != Placement.Type.Placement) {
                         continue;
                     }
                     
@@ -317,11 +347,6 @@ public class ReferencePnpJobProcessor extends AbstractPnpJobProcessor {
                         continue;
                     }
                     
-                    // Ignore placements that aren't on the side of the board we're processing.
-                    if (placement.getSide() != boardLocation.getGlobalSide()) {
-                        continue;
-                    }
-
                     JobPlacement jobPlacement = new JobPlacement(boardLocation, placement);
 
                     checkJobPlacement(jobPlacement);
@@ -422,6 +447,9 @@ public class ReferencePnpJobProcessor extends AbstractPnpJobProcessor {
             for (Feeder feeder : machine.getFeeders()) {
                 if (feeder.isEnabled() && feeder.getPart() != null) {
                     for (JobPlacement placement : getPendingJobPlacements()) {
+                        if (placement.getPlacement().getType() != Placement.Type.Placement) {
+                            continue;
+                        }
                         if (placement.getPartId().equals(feeder.getPart().getId())) {
                             if (feeder.getJobPreparationLocation() != null) {
                                 // only feeders with location added to the visit list
@@ -2001,7 +2029,8 @@ public class ReferencePnpJobProcessor extends AbstractPnpJobProcessor {
 
                 Logger.info("Errored Placements: "+erroredPlacements.size());
                 for (JobPlacement jobPlacement : erroredPlacements) {
-                    Logger.info("{}: {}", jobPlacement, jobPlacement.getError().getMessage());
+                    Logger.info("{}: {}", jobPlacement, jobPlacement.getError() == null
+                            ? "No exception attached" : jobPlacement.getError().getMessage());
                 }
             }
             else {
@@ -2131,7 +2160,8 @@ public class ReferencePnpJobProcessor extends AbstractPnpJobProcessor {
         int blockedRank = currentRank+10;
         Logger.debug("Current rank is {}. Blocked up to rank {}",currentRank,blockedRank);
         return this.jobPlacements.stream().filter((jobPlacement) -> {
-            return jobPlacement.getStatus() == Status.Pending && jobPlacement.getRank()<blockedRank;
+            return jobPlacement.getPlacement().getType() == Placement.Type.Placement
+                    && jobPlacement.getStatus() == Status.Pending && jobPlacement.getRank()<blockedRank;
         }).collect(Collectors.toList());
     }
 
@@ -2144,7 +2174,8 @@ public class ReferencePnpJobProcessor extends AbstractPnpJobProcessor {
         // whose value does not really matter.
         //
         return this.jobPlacements.stream().filter((jobPlacement) -> {
-            return jobPlacement.getStatus() != Status.Complete;
+            return jobPlacement.getPlacement().getType() == Placement.Type.Placement
+                    && jobPlacement.getStatus() != Status.Complete;
         }).mapToInt((jobPlacement) -> {
             return jobPlacement.getRank();
         }).min().orElse(Placement.defaultRank);
@@ -2559,7 +2590,13 @@ public class ReferencePnpJobProcessor extends AbstractPnpJobProcessor {
                 return result;
             }
             catch (JobProcessorException e) {
-                switch (plannedPlacement.jobPlacement.getPlacement().getEffectiveErrorHandling(job)) {
+                Placement placement = plannedPlacement.jobPlacement.getPlacement();
+                Placement.ErrorHandling errorHandling = job.retrieveErrorHandlingState(
+                        plannedPlacement.jobPlacement.getBoardLocation(), placement);
+                if (errorHandling == Placement.ErrorHandling.Default) {
+                    errorHandling = placement.getEffectiveErrorHandling(job);
+                }
+                switch (errorHandling) {
                     case Alert:
                         throw e;
                     case Defer:
