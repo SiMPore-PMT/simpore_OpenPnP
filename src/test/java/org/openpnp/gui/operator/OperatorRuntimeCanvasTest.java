@@ -169,6 +169,25 @@ public class OperatorRuntimeCanvasTest {
         assertEquals(secondBefore, canvas.getBoardHitBounds(second));
         assertEquals(thirdBefore, canvas.getBoardHitBounds(third));
         assertEquals(fourthBefore, canvas.getBoardHitBounds(fourth));
+
+        // Stopping enables editing again. Starting a second run must not replace
+        // the original visual grid with the calibrated machine coordinates.
+        canvas.selectBoardTarget(fourth);
+        canvas.setEditingAllowed(true);
+        canvas.setJob(job);
+        paint(canvas);
+        assertTrue(canvas.getSelectedBoards().contains(fourth));
+        assertEquals(firstBefore, canvas.getBoardHitBounds(first));
+        assertEquals(secondBefore, canvas.getBoardHitBounds(second));
+        assertEquals(thirdBefore, canvas.getBoardHitBounds(third));
+        assertEquals(fourthBefore, canvas.getBoardHitBounds(fourth));
+
+        canvas.setEditingAllowed(false);
+        paint(canvas);
+        assertEquals(firstBefore, canvas.getBoardHitBounds(first));
+        assertEquals(secondBefore, canvas.getBoardHitBounds(second));
+        assertEquals(thirdBefore, canvas.getBoardHitBounds(third));
+        assertEquals(fourthBefore, canvas.getBoardHitBounds(fourth));
     }
 
     private static BoardLocation boardAt(String id, double x, double y) {

@@ -209,6 +209,8 @@ public class OperatorRuntimeCanvas extends JPanel {
             selectedBoards.clear();
             selectedPanelQuadrant = null;
             selectedPocketTarget = null;
+            this.job = job;
+            captureRuntimeLayout();
         }
         this.job = job;
         captureRuntimeLayout();
@@ -226,11 +228,9 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     private Location getLayoutLocation(PlacementsHolderLocation<?> board) {
-        if (!editingAllowed) {
-            Location location = runtimeLayoutLocations.get(board);
-            if (location != null) {
-                return location;
-            }
+        Location location = runtimeLayoutLocations.get(board);
+        if (location != null) {
+            return location;
         }
         return board.getGlobalLocation();
     }
@@ -585,8 +585,8 @@ public class OperatorRuntimeCanvas extends JPanel {
         }
         xs.sort(Comparator.naturalOrder());
         ys.sort(Comparator.naturalOrder());
-        Bounds.removeDuplicates(xs);
-        Bounds.removeDuplicates(ys);
+        removeDuplicates(xs);
+        removeDuplicates(ys);
         return new int[] { Math.max(1, xs.size()), Math.max(1, ys.size()) };
     }
 
@@ -1077,6 +1077,24 @@ public class OperatorRuntimeCanvas extends JPanel {
         }
     }
 
+    private static void removeDuplicates(List<Double> values) {
+        for (int i = values.size() - 1; i > 0; i--) {
+            if (Math.abs(values.get(i) - values.get(i - 1)) < 0.001) {
+                values.remove(i);
+            }
+        }
+    }
+
+    private static int nearest(List<Double> values, double value) {
+        int nearest = 0;
+        for (int i = 1; i < values.size(); i++) {
+            if (Math.abs(values.get(i) - value) < Math.abs(values.get(nearest) - value)) {
+                nearest = i;
+            }
+        }
+        return nearest;
+    }
+
     private class Bounds {
         private final List<Double> columns = new ArrayList<>();
         private final List<Double> rows = new ArrayList<>();
@@ -1122,22 +1140,5 @@ public class OperatorRuntimeCanvas extends JPanel {
             return new Rectangle(x, y, boardWidth, boardHeight);
         }
 
-        private static void removeDuplicates(List<Double> values) {
-            for (int i = values.size() - 1; i > 0; i--) {
-                if (Math.abs(values.get(i) - values.get(i - 1)) < 0.001) {
-                    values.remove(i);
-                }
-            }
-        }
-
-        private static int nearest(List<Double> values, double value) {
-            int nearest = 0;
-            for (int i = 1; i < values.size(); i++) {
-                if (Math.abs(values.get(i) - value) < Math.abs(values.get(nearest) - value)) {
-                    nearest = i;
-                }
-            }
-            return nearest;
-        }
     }
 }
