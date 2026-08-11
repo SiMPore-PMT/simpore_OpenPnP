@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -88,6 +89,8 @@ public class OperatorRuntimeCanvas extends JPanel {
     private EditMode editMode = EditMode.NONE;
     private boolean editingAllowed;
     private final HashMap<String, Location> runtimeLayoutLocations = new HashMap<>();
+    private final IdentityHashMap<PlacementsHolderLocation<?>, Location> runtimeLayoutLocations =
+            new IdentityHashMap<>();
     private final Set<PlacementsHolderLocation<?>> selectedBoards = new LinkedHashSet<>();
     private final List<BoardHit> boardHits = new ArrayList<>();
     private final List<TrayPocketHit> trayPocketHits = new ArrayList<>();
@@ -183,6 +186,9 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     public void setEditingAllowed(boolean editingAllowed) {
+        if (this.editingAllowed && !editingAllowed) {
+            captureRuntimeLayout();
+        }
         this.editingAllowed = editingAllowed;
         repaint();
     }
@@ -208,6 +214,8 @@ public class OperatorRuntimeCanvas extends JPanel {
             this.job = job;
             captureRuntimeLayout();
         }
+        this.job = job;
+        captureRuntimeLayout();
         repaint();
     }
 
