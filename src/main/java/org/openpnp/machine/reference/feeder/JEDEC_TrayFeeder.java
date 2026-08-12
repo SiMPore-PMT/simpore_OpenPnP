@@ -337,14 +337,17 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
                 }
                 // Find the closest result
                 results.sort((a, b) -> {
-                    Double da = getPixelLocation(camera, a.center.x, a.center.y)
+                    Double da = VisionUtils.getPixelLocation(camera, a.center.x, a.center.y)
                             .getLinearDistanceTo(camera.getLocation());
-                    Double db = getPixelLocation(camera, b.center.x, b.center.y)
+                    Double db = VisionUtils.getPixelLocation(camera, b.center.x, b.center.y)
                             .getLinearDistanceTo(camera.getLocation());
                     return da.compareTo(db);
                 });
                 RotatedRect result = results.get(0);
-                Location partLocation = getPixelLocation(camera, result.center.x, result.center.y);
+                Location cameraPartLocation = VisionUtils.getPixelLocation(
+                        camera, result.center.x, result.center.y);
+                Location nozzlePickLocation = VisionUtils.getPixelLocation(
+                        camera, nozzle, result.center.x, result.center.y);
                 // The top-camera RotatedRect angle is required for square die / square
                 // nozzle pick alignment and is always used for pick rotation. The configured
                 // componentRotationInTray is not included here; it is applied in postPick()
@@ -353,36 +356,37 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
                 double pickRotation = getPickRotation(startPoint, result.angle);
                 Logger.debug("{}.locateFeederPart(): nominal rotation {}, detected offset {}, pick rotation {}",
                         getName(), startPoint.getRotation(), result.angle, pickRotation);
-                // Update the location with the configured pick Z and the detected-angle pick
+                // Update the nozzle-aware location with the configured pick Z and the detected-angle pick
                 // rotation, excluding componentRotationInTray to avoid runout-compensated XY
                 // shifts before pickup.
-                partLocation =
-                        partLocation.derive(null, null,
-                                this.location.convertToUnits(partLocation.getUnits()).getZ(),
-                                pickRotation);
+                Location finalNozzlePickLocation = deriveFinalNozzlePickLocation(
+                        nozzlePickLocation, this.location, pickRotation);
+                Logger.debug("{}.locateFeederPart(): cameraPartLocation {}, nozzlePickLocation {}, "
+                        + "finalNozzlePickLocation {}", getName(), cameraPartLocation,
+                        nozzlePickLocation, finalNozzlePickLocation);
                 MainFrame.get().getCameraViews().getCameraView(camera)
                         .showFilteredImage(OpenCvUtils.toBufferedImage(pipeline.getWorkingImage()), 250);
 
-                Location guardedPartLocation = checkIfInInitialView(camera, visionStartPoint, partLocation);
-                if (guardedPartLocation == null) {
+                Location guardedCameraPartLocation =
+                        checkIfInInitialView(camera, visionStartPoint, cameraPartLocation);
+                if (guardedCameraPartLocation == null) {
                     return null;
                 }
 
-                Location cameraLocationMm = camera.getLocation().convertToUnits(LengthUnit.Millimeters);
-                Location partLocationMm = guardedPartLocation.convertToUnits(LengthUnit.Millimeters);
-                double dx = partLocationMm.getX() - cameraLocationMm.getX();
-                double dy = partLocationMm.getY() - cameraLocationMm.getY();
+                Location recenterOffset = getCameraRecenterOffset(camera, guardedCameraPartLocation);
+                double dx = recenterOffset.getX();
+                double dy = recenterOffset.getY();
 
                 if (Math.abs(dx) <= toleranceMm && Math.abs(dy) <= toleranceMm) {
-                    return guardedPartLocation;
+                    return finalNozzlePickLocation;
                 }
 
                 if (pass + 1 < maxPasses) {
-                    moveCameraToDieCenter(camera, guardedPartLocation);
+                    moveCameraToDieCenter(camera, guardedCameraPartLocation);
                     camera.waitForCompletion(CompletionType.WaitForStillstand);
                 }
                 else {
-                    return guardedPartLocation;
+                    return finalNozzlePickLocation;
                 }
             }
         }
@@ -439,18 +443,18 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         return Math.max(recenterMaxPasses, 1);
     }
 
-    private Location getPixelLocation(Camera camera, double x, double y) {
-        if (!isUseAdvancedCameraCalibration()) {
-            return VisionUtils.getPixelLocation(camera, x, y);
-        }
+    static Location deriveFinalNozzlePickLocation(Location nozzlePickLocation,
+            Location trayLocation, double pickRotation) {
+        double trayZ = trayLocation.convertToUnits(nozzlePickLocation.getUnits()).getZ();
+        return nozzlePickLocation.derive(null, null, trayZ, pickRotation);
+    }
 
-        Location unitsPerPixel = getUnitsPerPixelForVision(camera);
-        LengthUnit units = unitsPerPixel.getUnits();
-        double offsetX = x - camera.getWidth() / 2.0;
-        double offsetY = y - camera.getHeight() / 2.0;
-        double machineOffsetX = offsetX * unitsPerPixel.getX();
-        double machineOffsetY = -offsetY * unitsPerPixel.getY();
-        return camera.getLocation().add(new Location(units, machineOffsetX, machineOffsetY, 0, 0));
+    static Location getCameraRecenterOffset(Camera camera, Location cameraPartLocation) {
+        Location cameraLocationMm = camera.getLocation().convertToUnits(LengthUnit.Millimeters);
+        Location partLocationMm = cameraPartLocation.convertToUnits(LengthUnit.Millimeters);
+        return new Location(LengthUnit.Millimeters,
+                partLocationMm.getX() - cameraLocationMm.getX(),
+                partLocationMm.getY() - cameraLocationMm.getY(), 0, 0);
     }
 
     private Location getUnitsPerPixelForVision(Camera camera) {
@@ -460,7 +464,7 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         return camera.getUnitsPerPixel(getVisionViewingPlaneZ());
     }
 
-    private Length getVisionViewingPlaneZ() {
+    Length getVisionViewingPlaneZ() {
         Length feederZ = this.location.getLengthZ();
         Length partHeight = getPart() == null ? null : getPart().getHeight();
         if (partHeight == null || partHeight.getUnits() == null) {
@@ -826,9 +830,9 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
      */
     @Override
     public boolean isPartHeightAbovePickLocation() {
-        // JEDEC tray pick Z is expected to be the part top (like tray feeders),
-        // so do not add part height again in Nozzle.moveToPickLocation().
-        return false;
+        // The configured JEDEC Z is the tray surface. ReferenceNozzle adds the part
+        // height once when moving to the actual component top.
+        return true;
     }
 
     public CvPipeline getPipeline() {
