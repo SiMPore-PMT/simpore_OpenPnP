@@ -3,7 +3,6 @@ package org.openpnp.machine.reference.feeder;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.lang.reflect.Proxy;
-import java.util.Arrays;
 
 import org.junit.jupiter.api.Test;
 import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder.FirstRasterDirection;
@@ -17,7 +16,6 @@ import org.openpnp.model.Location;
 import org.openpnp.model.Part;
 import org.openpnp.spi.Camera;
 import org.openpnp.spi.Nozzle;
-import org.openpnp.util.Utils2D;
 import org.openpnp.util.VisionUtils;
 
 public class JEDEC_TrayFeederTest {
@@ -76,40 +74,37 @@ public class JEDEC_TrayFeederTest {
     }
 
     @Test
-    public void trayVisionPickRotationAlwaysUsesDetectedAngle() {
-        assertEquals(Utils2D.angleNorm(-(1.5 + 0), 180),
-                JEDEC_TrayFeeder.calculateTrayVisionPickRotation(0, 1.5), 0.0001);
-        assertEquals(Utils2D.angleNorm(-(1.5 + 10), 180),
-                JEDEC_TrayFeeder.calculateTrayVisionPickRotation(10, 1.5), 0.0001);
-        assertEquals(Utils2D.angleNorm(-(0 + 10), 180),
-                JEDEC_TrayFeeder.calculateTrayVisionPickRotation(10, Double.NaN), 0.0001);
+    public void pickRotationOptionsFollowPrecedenceAndSignPolicy() {
+        assertEquals(-1.5, JEDEC_TrayFeeder.calculatePickRotation(true, true,
+                10, 90, 1.5), 0.0001);
+        assertEquals(100, JEDEC_TrayFeeder.calculatePickRotation(true, false,
+                10, 90, 1.5), 0.0001);
+        assertEquals(10, JEDEC_TrayFeeder.calculatePickRotation(false, false,
+                10, 90, 1.5), 0.0001);
+        assertEquals(-1.5, JEDEC_TrayFeeder.calculatePickRotation(false, true,
+                47, 270, 1.5), 0.0001);
     }
 
     @Test
-    public void pickRotationCannotIncludeComponentRotation() {
-        long helperCount = Arrays.stream(JEDEC_TrayFeeder.class.getDeclaredMethods())
-                .filter(method -> method.getName().equals("calculateTrayVisionPickRotation"))
-                .peek(method -> assertEquals(2, method.getParameterCount()))
-                .count();
-        assertEquals(1, helperCount);
-    }
-
-    @Test
-    public void postPickRotationAppliesComponentRotationAfterPickup() {
-        assertEquals(10, JEDEC_TrayFeeder.calculatePostPickRotation(10, 0), 0.0001);
-        assertEquals(100, JEDEC_TrayFeeder.calculatePostPickRotation(10, 90), 0.0001);
-        assertEquals(-80, JEDEC_TrayFeeder.calculatePostPickRotation(10, 270), 0.0001);
-        assertEquals(90, JEDEC_TrayFeeder.calculatePostPickRotation(Double.NaN, 88), 0.0001);
+    public void visionTargetsAlwaysResetInheritedRotation() {
+        Location previousCameraLocation =
+                new Location(LengthUnit.Millimeters, 10, 20, 5, 12.103);
+        Location detected = new Location(LengthUnit.Millimeters, 11, 21, 5, 12.103);
+        assertEquals(0, JEDEC_TrayFeeder.createVisionTarget(previousCameraLocation, 0)
+                .getRotation(), 0.0);
+        assertEquals(0, JEDEC_TrayFeeder.createRecenterTarget(
+                previousCameraLocation, detected, 0).getRotation(), 0.0);
+        Location anotherPreviousLocation = previousCameraLocation.derive(null, null, null, -33.7);
+        assertEquals(0, JEDEC_TrayFeeder.createVisionTarget(anotherPreviousLocation, 0)
+                .getRotation(), 0.0);
     }
 
     @Test
     public void cameraRecenterAndNozzlePickUseSeparateCoordinateSpaces() {
         Location cameraLocation = new Location(LengthUnit.Millimeters, 100, 200, 10, 0);
-        Location calibratedCameraLocation =
-                new Location(LengthUnit.Millimeters, 99.7, 200.4, 10, 0);
         Location unitsPerPixel = new Location(LengthUnit.Millimeters, 1, 1, 0, 0);
         Nozzle nozzle = proxy(Nozzle.class, null, null, null);
-        Camera camera = proxy(Camera.class, cameraLocation, calibratedCameraLocation, unitsPerPixel);
+        Camera camera = proxy(Camera.class, cameraLocation, cameraLocation, unitsPerPixel);
         JEDEC_TrayFeeder feeder = new JEDEC_TrayFeeder();
 
         Location cameraPartLocation = VisionUtils.getPixelLocation(camera, 330, 220);
@@ -120,32 +115,26 @@ public class JEDEC_TrayFeederTest {
         assertEquals(220, cameraPartLocation.getY(), 0.0001);
         assertEquals(10, recenterOffset.getX(), 0.0001);
         assertEquals(20, recenterOffset.getY(), 0.0001);
-        assertEquals(109.7, nozzlePickLocation.getX(), 0.0001);
-        assertEquals(220.4, nozzlePickLocation.getY(), 0.0001);
-        // The tool calibration delta occurs once, rather than being manually applied again.
-        assertEquals(-0.3, nozzlePickLocation.getX() - cameraPartLocation.getX(), 0.0001);
-        assertEquals(0.4, nozzlePickLocation.getY() - cameraPartLocation.getY(), 0.0001);
+        assertEquals(cameraPartLocation, nozzlePickLocation);
     }
 
     @Test
     public void pickRotationDoesNotChangeNozzleAwareDetectedXy() {
         Location cameraLocation = new Location(LengthUnit.Millimeters, 100, 200, 10, 0);
-        Location calibratedCameraLocation =
-                new Location(LengthUnit.Millimeters, 99.7, 200.4, 10, 0);
         Location unitsPerPixel = new Location(LengthUnit.Millimeters, 1, 1, 0, 0);
         Nozzle nozzle = proxy(Nozzle.class, null, null, null);
-        Camera camera = proxy(Camera.class, cameraLocation, calibratedCameraLocation, unitsPerPixel);
+        Camera camera = proxy(Camera.class, cameraLocation, cameraLocation, unitsPerPixel);
         JEDEC_TrayFeeder feeder = new JEDEC_TrayFeeder();
 
         Location detected = VisionUtils.getPixelLocation(camera, nozzle, 330, 220);
         Location withoutDetectedAngle = detected.derive(null, null, 1.5, 0.0);
         Location withDetectedAngle = detected.derive(null, null, 1.5,
-                JEDEC_TrayFeeder.calculateTrayVisionPickRotation(10, 1.5));
+                JEDEC_TrayFeeder.calculatePickRotation(true, true, 10, 90, 1.5));
 
         assertEquals(withoutDetectedAngle.getX(), withDetectedAngle.getX(), 0.0);
         assertEquals(withoutDetectedAngle.getY(), withDetectedAngle.getY(), 0.0);
-        assertEquals(109.7, withDetectedAngle.getX(), 0.0001);
-        assertEquals(220.4, withDetectedAngle.getY(), 0.0001);
+        assertEquals(110, withDetectedAngle.getX(), 0.0001);
+        assertEquals(220, withDetectedAngle.getY(), 0.0001);
     }
 
     @Test
