@@ -8,6 +8,7 @@ import java.awt.Dimension;
 import java.awt.Rectangle;
 
 import javax.swing.JLabel;
+import javax.swing.JButton;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
@@ -17,6 +18,24 @@ import javax.swing.table.DefaultTableModel;
 import org.junit.jupiter.api.Test;
 
 public class OperatorPanelTest {
+    @Test
+    public void moveCameraClickPreservesCanvasHighlight() {
+        JPanel root = new JPanel();
+        JPanel canvas = new JPanel();
+        JButton moveCamera = new JButton();
+        JLabel moveCameraChild = new JLabel();
+        moveCamera.add(moveCameraChild);
+        JButton unrelatedControl = new JButton();
+        root.add(canvas);
+        root.add(moveCamera);
+        root.add(unrelatedControl);
+
+        assertTrue(!OperatorPanel.shouldDismissHighlight(canvas, canvas, moveCamera));
+        assertTrue(!OperatorPanel.shouldDismissHighlight(moveCamera, canvas, moveCamera));
+        assertTrue(!OperatorPanel.shouldDismissHighlight(moveCameraChild, canvas, moveCamera));
+        assertTrue(OperatorPanel.shouldDismissHighlight(unrelatedControl, canvas, moveCamera));
+    }
+
     @Test
     public void inspectorRowsScrollWithoutMovingInitializedRuntimeSplit() {
         DefaultTableModel model = new DefaultTableModel(new Object[] { "Id" }, 0);

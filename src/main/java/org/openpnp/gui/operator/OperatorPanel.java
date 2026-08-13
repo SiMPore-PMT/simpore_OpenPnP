@@ -154,11 +154,17 @@ public class OperatorPanel extends JPanel {
             return;
         }
         Component clicked = (Component) event.getSource();
-        if (!SwingUtilities.isDescendingFrom(clicked, canvas)) {
+        if (shouldDismissHighlight(clicked, canvas, moveCameraButton)) {
             canvas.clearHighlightSelection();
             updateButtons();
         }
     };
+
+    static boolean shouldDismissHighlight(Component clicked, Component canvas,
+            Component moveCameraControl) {
+        return !SwingUtilities.isDescendingFrom(clicked, canvas)
+                && !SwingUtilities.isDescendingFrom(clicked, moveCameraControl);
+    }
 
     public OperatorPanel(MainFrame mainFrame, JobPanel jobPanel) {
         super(new BorderLayout(8, 8));
