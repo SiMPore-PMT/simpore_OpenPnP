@@ -111,6 +111,34 @@ public class OperatorRuntimeCanvasTest {
     }
 
     @Test
+    public void trayPocketSelectionSurvivesTheMatchingMouseRelease() throws Exception {
+        OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
+        JEDEC_TrayFeeder tray = new JEDEC_TrayFeeder();
+        tray.setTrayCountRows(2);
+        tray.setTrayCountCols(4);
+        Configuration.get().getMachine().addFeeder(tray);
+        try {
+            canvas.setListener(new NoOpListener());
+            canvas.setBounds(0, 0, 900, 600);
+            paint(canvas);
+            Rectangle pocket = canvas.getTrayPocketHitBounds(tray, 3);
+            int x = pocket.x + pocket.width / 2;
+            int y = pocket.y + pocket.height / 2;
+
+            canvas.dispatchEvent(new MouseEvent(canvas, MouseEvent.MOUSE_PRESSED, 0, 0,
+                    x, y, 1, false, MouseEvent.BUTTON1));
+            canvas.dispatchEvent(new MouseEvent(canvas, MouseEvent.MOUSE_RELEASED, 1, 0,
+                    x, y, 1, false, MouseEvent.BUTTON1));
+
+            assertSame(tray, canvas.getSelectedPocketTarget().getFeeder());
+            assertEquals(3, canvas.getSelectedPocketTarget().getFeedIndexBase0());
+        }
+        finally {
+            Configuration.get().getMachine().removeFeeder(tray);
+        }
+    }
+
+    @Test
     public void calculatedCardsShareWidthAndTrackContent() {
         OperatorRuntimeCanvas.LayoutGeometry geometry =
                 OperatorRuntimeCanvas.calculateLayoutGeometry(1200, 800, 2, 2, true);

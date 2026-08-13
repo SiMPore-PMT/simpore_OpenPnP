@@ -104,19 +104,25 @@ public class OperatorRuntimeCanvas extends JPanel {
         setPreferredSize(new Dimension(760, 520));
         setBackground(BACKGROUND);
         MouseAdapter mouseAdapter = new MouseAdapter() {
+            private boolean pressHandledByCanvasControl;
+
             @Override
             public void mousePressed(MouseEvent e) {
+                pressHandledByCanvasControl = false;
                 if (e.isPopupTrigger()) {
                     showPopup(e);
+                    pressHandledByCanvasControl = true;
                     return;
                 }
                 PanelQuadrantHit quadrantHit = findPanelQuadrant(e.getX(), e.getY());
                 if (quadrantHit != null) {
+                    pressHandledByCanvasControl = true;
                     selectPanelQuadrant(quadrantHit.slot.quadrant);
                     return;
                 }
                 TrayActionHit actionHit = findTrayAction(e.getX(), e.getY());
                 if (actionHit != null && listener != null) {
+                    pressHandledByCanvasControl = true;
                     clearHighlightSelection();
                     if (actionHit.reset) {
                         listener.resetTray(actionHit.feeder);
@@ -128,6 +134,7 @@ public class OperatorRuntimeCanvas extends JPanel {
                 }
                 TrayPocketHit pocketHit = findTrayPocket(e.getX(), e.getY());
                 if (pocketHit != null) {
+                    pressHandledByCanvasControl = true;
                     selectTrayPocket(pocketHit);
                     return;
                 }
@@ -151,6 +158,13 @@ public class OperatorRuntimeCanvas extends JPanel {
             public void mouseReleased(MouseEvent e) {
                 if (e.isPopupTrigger()) {
                     showPopup(e);
+                    pressHandledByCanvasControl = false;
+                    return;
+                }
+                // Tray pockets and the other canvas controls act on mouse press. Do not
+                // reinterpret the matching release as a click on blank board space.
+                if (pressHandledByCanvasControl) {
+                    pressHandledByCanvasControl = false;
                     return;
                 }
                 boolean editSelection = editMode != EditMode.NONE && editingAllowed;
@@ -204,6 +218,15 @@ public class OperatorRuntimeCanvas extends JPanel {
     Rectangle getBoardHitBounds(PlacementsHolderLocation<?> boardLocation) {
         for (BoardHit hit : boardHits) {
             if (hit.boardLocation == boardLocation) {
+                return new Rectangle(hit.bounds);
+            }
+        }
+        return null;
+    }
+
+    Rectangle getTrayPocketHitBounds(JEDEC_TrayFeeder feeder, int feedIndexBase0) {
+        for (TrayPocketHit hit : trayPocketHits) {
+            if (hit.feeder == feeder && hit.feedIndexBase0 == feedIndexBase0) {
                 return new Rectangle(hit.bounds);
             }
         }
