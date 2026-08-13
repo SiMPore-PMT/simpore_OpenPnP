@@ -251,7 +251,7 @@ public class PackageVisionWizard extends AbstractConfigurationWizard {
         showReticle();
     }
 
-    private void showReticle() {
+    public void showReticle() {
         try {
             // Add the reticle to the top camera
             showReticleCamera(Configuration.get().getMachine().getDefaultHead().getDefaultCamera());
@@ -260,6 +260,26 @@ public class PackageVisionWizard extends AbstractConfigurationWizard {
         }
         catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    public static void hideReticle() {
+        try {
+            Camera defaultCamera = Configuration.get().getMachine().getDefaultHead().getDefaultCamera();
+            hideReticleCamera(defaultCamera);
+            for (Camera camera : Configuration.get().getMachine().getCameras()) {
+                hideReticleCamera(camera);
+            }
+        }
+        catch (Exception e) {
+            // The machine or UI may be unavailable while the panel is being torn down.
+        }
+    }
+
+    private static void hideReticleCamera(Camera camera) {
+        CameraView cameraView = MainFrame.get().getCameraViews().getCameraView(camera);
+        if (cameraView != null) {
+            cameraView.removeReticle(PackageVisionWizard.class.getName());
         }
     }
 

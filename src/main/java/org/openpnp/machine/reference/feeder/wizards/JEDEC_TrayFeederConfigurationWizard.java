@@ -125,10 +125,16 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
     private JTextField retryCountTf;
     private JTextField pickRetryCount;
     private JComboBox<AbstractVisionSettings> fiducialVisionSettingsCombo;
+    private JCheckBox usePartFiducial;
+    private JLabel partFiducialVisionSettings;
+    private JLabel fiducialVisionSettingsLabel;
+    private JPanel visionPanel;
     private JCheckBox useAdvancedCameraCalibration;
     private JCheckBox useAsyncGcodeMotion;
     private JTextField recenterToleranceMm;
     private JTextField recenterMaxPasses;
+    private JCheckBox rotateNozzleAtPick;
+    private JCheckBox useDetectedAngleForPickRotation;
     private TrayPreviewPanel trayPreviewPanel;
     private JLabel secondRasterDirectionLabel;
     private JRadioButton firstDirectionRow;
@@ -431,8 +437,10 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         warningPanel.add(lblWarning);
 
         // Vision controls
-        JPanel visionPanel = new JPanel();
-        visionPanel.setBorder(new TitledBorder(null, "Vision", TitledBorder.LEADING, TitledBorder.TOP, null, null));
+        visionPanel = new JPanel();
+        visionPanel.setBorder(new TitledBorder(null,
+                Translations.getString("JEDEC_TrayFeederConfigurationWizard.Vision"),
+                TitledBorder.LEADING, TitledBorder.TOP, null, null));
         contentPanel.add(visionPanel);
         visionPanel.setLayout(new FormLayout(new ColumnSpec[] {
                 FormSpecs.RELATED_GAP_COLSPEC, FormSpecs.DEFAULT_COLSPEC, FormSpecs.RELATED_GAP_COLSPEC,
@@ -441,50 +449,75 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
                         FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC,
                         FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC,
                         FormSpecs.DEFAULT_ROWSPEC, FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC,
+                        FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC,
                         FormSpecs.RELATED_GAP_ROWSPEC, FormSpecs.DEFAULT_ROWSPEC, }));
 
-        JLabel lblFiducialVisionSettings = new JLabel("Top Vision Alignment Model");
-        visionPanel.add(lblFiducialVisionSettings, "2, 2");
+        usePartFiducial = new JCheckBox(Translations.getString(
+                "JEDEC_TrayFeederConfigurationWizard.UsePartFiducial"));
+        usePartFiducial.setToolTipText(Translations.getString(
+                "JEDEC_TrayFeederConfigurationWizard.UsePartFiducial.Tooltip"));
+        visionPanel.add(usePartFiducial, "2, 2, 5, 1");
+
+        fiducialVisionSettingsLabel = new JLabel(Translations.getString(
+                "JEDEC_TrayFeederConfigurationWizard.TopVisionModel"));
+        visionPanel.add(fiducialVisionSettingsLabel, "2, 4");
+
+        partFiducialVisionSettings = new JLabel();
+        visionPanel.add(partFiducialVisionSettings, "4, 4, 3, 1");
 
         fiducialVisionSettingsCombo = new JComboBox<>(new VisionSettingsComboBoxModel<>(FiducialVisionSettings.class));
         fiducialVisionSettingsCombo.setMaximumRowCount(20);
         fiducialVisionSettingsCombo.setRenderer(new NamedListCellRenderer<>());
-        visionPanel.add(fiducialVisionSettingsCombo, "4, 2, 3, 1");
+        fiducialVisionSettingsCombo.setToolTipText(Translations.getString(
+                "JEDEC_TrayFeederConfigurationWizard.ExplicitModel.Tooltip"));
+        visionPanel.add(fiducialVisionSettingsCombo, "4, 4, 3, 1");
 
-        JLabel lblFeedPipeline = new JLabel("Active Pick Pipeline");
-        visionPanel.add(lblFeedPipeline, "2, 4");
+        JLabel lblFeedPipeline = new JLabel(Translations.getString(
+                "JEDEC_TrayFeederConfigurationWizard.ActivePickPipeline"));
+        visionPanel.add(lblFeedPipeline, "2, 6");
 
-        JButton btnEditPipeline = new JButton("Edit");
+        JButton btnEditPipeline = new JButton(Translations.getString(
+                "JEDEC_TrayFeederConfigurationWizard.Edit"));
         btnEditPipeline.addActionListener(e -> UiUtils.messageBoxOnException(() -> {
             editPipeline();
         }));
-        visionPanel.add(btnEditPipeline, "4, 4");
+        visionPanel.add(btnEditPipeline, "4, 6");
 
-        JButton btnResetPipeline = new JButton("Reset");
+        JButton btnResetPipeline = new JButton(Translations.getString(
+                "JEDEC_TrayFeederConfigurationWizard.Reset"));
         btnResetPipeline.addActionListener(e -> UiUtils.messageBoxOnException(() -> {
             resetPipeline();
         }));
-        visionPanel.add(btnResetPipeline, "6, 4");
+        visionPanel.add(btnResetPipeline, "6, 6");
 
         useAdvancedCameraCalibration = new JCheckBox("Use Advanced Camera Calibration");
-        visionPanel.add(useAdvancedCameraCalibration, "2, 6, 3, 1");
+        visionPanel.add(useAdvancedCameraCalibration, "2, 8, 3, 1");
 
         useAsyncGcodeMotion = new JCheckBox("Async Gcode Recenter Waits");
-        visionPanel.add(useAsyncGcodeMotion, "6, 6");
+        visionPanel.add(useAsyncGcodeMotion, "6, 8");
 
         JLabel lblRecenterToleranceMm = new JLabel("Recenter Tolerance (mm)");
-        visionPanel.add(lblRecenterToleranceMm, "2, 8");
+        visionPanel.add(lblRecenterToleranceMm, "2, 10");
 
         recenterToleranceMm = new JTextField();
         recenterToleranceMm.setColumns(10);
-        visionPanel.add(recenterToleranceMm, "4, 8");
+        visionPanel.add(recenterToleranceMm, "4, 10");
 
         JLabel lblRecenterMaxPasses = new JLabel("Recenter Max Passes");
-        visionPanel.add(lblRecenterMaxPasses, "2, 10");
+        visionPanel.add(lblRecenterMaxPasses, "2, 12");
 
         recenterMaxPasses = new JTextField();
         recenterMaxPasses.setColumns(10);
-        visionPanel.add(recenterMaxPasses, "4, 10");
+        visionPanel.add(recenterMaxPasses, "4, 12");
+
+        rotateNozzleAtPick = new JCheckBox("Rotate nozzle at pick");
+        visionPanel.add(rotateNozzleAtPick, "2, 14, 5, 1");
+
+        useDetectedAngleForPickRotation = new JCheckBox("Use detected angle for pick rotation");
+        visionPanel.add(useDetectedAngleForPickRotation, "2, 16, 5, 1");
+
+        usePartFiducial.addActionListener(e -> updateVisionControls());
+        comboBoxPart.addActionListener(e -> updateVisionControls());
 
     }
 
@@ -516,12 +549,16 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
 
         // feeder bindings (expect your JEDEC_TrayFeeder to expose same properties as rotated tray feeder)
         addWrappedBinding(feeder, "part", comboBoxPart, "selectedItem");
+        addWrappedBinding(feeder, "usePartFiducial", usePartFiducial, "selected");
         addWrappedBinding(feeder, "feedRetryCount", retryCountTf, "text", intConverter);
         addWrappedBinding(feeder, "pickRetryCount", pickRetryCount, "text", intConverter);
         addWrappedBinding(feeder, "useAdvancedCameraCalibration", useAdvancedCameraCalibration, "selected");
         addWrappedBinding(feeder, "useAsyncGcodeMotion", useAsyncGcodeMotion, "selected");
         addWrappedBinding(feeder, "recenterToleranceMm", recenterToleranceMm, "text", doubleConverter);
         addWrappedBinding(feeder, "recenterMaxPasses", recenterMaxPasses, "text", intConverter);
+        addWrappedBinding(feeder, "rotateNozzleAtPick", rotateNozzleAtPick, "selected");
+        addWrappedBinding(feeder, "useDetectedAngleForPickRotation",
+                useDetectedAngleForPickRotation, "selected");
         addWrappedBinding(feeder, "fiducialVisionSettingsId", fiducialVisionSettingsCombo, "selectedItem",
                 new Converter<String, AbstractVisionSettings>() {
                     @Override
@@ -540,6 +577,7 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
                         return visionSettings == null ? null : visionSettings.getId();
                     }
                 });
+        updateVisionControls();
 
         // pick location, rotations, Z
         MutableLocationProxy location = new MutableLocationProxy();
@@ -779,42 +817,44 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
 
     // ---------- Vision actions (from AdvancedLoosePart wizard) ----------
     private void editPipeline() throws Exception {
-        if (feeder.getPart() == null) {
-            throw new Exception("Feeder " + feeder.getName() + " has no part.");
-        }
-        FiducialVisionSettings fiducialVisionSettings = getSelectedFiducialVisionSettings();
-        CvPipeline pipeline = (fiducialVisionSettings != null) ? fiducialVisionSettings.getPipeline() : feeder.getPipeline();
-        if (pipeline == null) {
-            throw new Exception("No pipeline is configured for this feeder.");
-        }
+        FiducialVisionSettings fiducialVisionSettings = feeder.getActiveFiducialVisionSettings();
+        CvPipeline pipeline = feeder.getActivePipeline();
         pipeline.setProperty("camera", Configuration.get().getMachine().getDefaultHead().getDefaultCamera());
         pipeline.setProperty("feeder", feeder);
         CvPipelineEditor editor = new CvPipelineEditor(pipeline);
-        String pipelineName = (fiducialVisionSettings != null)
-                ? ((fiducialVisionSettings.getName() == null || fiducialVisionSettings.getName().isEmpty())
-                        ? fiducialVisionSettings.getId()
-                        : fiducialVisionSettings.getName())
-                : feeder.getPart().getId();
-        String pipelineType = (fiducialVisionSettings != null) ? " Top Vision Pipeline" : " Pipeline";
-        JDialog dialog = new CvPipelineEditorDialog(MainFrame.get(), pipelineName + pipelineType, editor);
+        String pipelineName = JEDEC_TrayFeeder.getVisionSettingsDisplayName(fiducialVisionSettings);
+        JDialog dialog = new CvPipelineEditorDialog(MainFrame.get(), pipelineName + " Top Vision Pipeline", editor);
         dialog.setVisible(true);
     }
 
-    private void resetPipeline() {
-        FiducialVisionSettings fiducialVisionSettings = getSelectedFiducialVisionSettings();
-        if (fiducialVisionSettings != null) {
-            fiducialVisionSettings.resetToDefault();
-            return;
+    private void resetPipeline() throws Exception {
+        FiducialVisionSettings settings = feeder.getActiveFiducialVisionSettings();
+        int answer = javax.swing.JOptionPane.showConfirmDialog(getTopLevelAncestor(),
+                Translations.getString("JEDEC_TrayFeederConfigurationWizard.ResetConfirm"),
+                Translations.getString("JEDEC_TrayFeederConfigurationWizard.Reset"),
+                javax.swing.JOptionPane.YES_NO_OPTION);
+        if (answer == javax.swing.JOptionPane.YES_OPTION) {
+            settings.resetToDefault();
+            updateVisionControls();
         }
-        feeder.resetPipeline();
     }
 
-    private FiducialVisionSettings getSelectedFiducialVisionSettings() {
-        Object selected = (fiducialVisionSettingsCombo != null) ? fiducialVisionSettingsCombo.getSelectedItem() : null;
-        if (selected instanceof FiducialVisionSettings) {
-            return (FiducialVisionSettings) selected;
+    private void updateVisionControls() {
+        boolean partMode = usePartFiducial.isSelected();
+        fiducialVisionSettingsCombo.setVisible(!partMode);
+        partFiducialVisionSettings.setVisible(partMode);
+        if (partMode) {
+            try {
+                partFiducialVisionSettings.setText(JEDEC_TrayFeeder.getVisionSettingsDisplayName(
+                        feeder.getActiveFiducialVisionSettings()));
+            }
+            catch (Exception e) {
+                partFiducialVisionSettings.setText(Translations.getString(
+                        "JEDEC_TrayFeederConfigurationWizard.NoFiducialVisionModel"));
+            }
         }
-        return feeder.getFiducialVisionSettings();
+        visionPanel.revalidate();
+        visionPanel.repaint();
     }
 
 
