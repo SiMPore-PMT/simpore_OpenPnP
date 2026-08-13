@@ -20,6 +20,16 @@ import org.openpnp.util.VisionUtils;
 
 public class JEDEC_TrayFeederTest {
     @Test
+    public void partFiducialIsTheDefaultAndTogglingPreservesExplicitSelection() {
+        JEDEC_TrayFeeder feeder = new JEDEC_TrayFeeder();
+        assertEquals(true, feeder.isUsePartFiducial());
+        feeder.setFiducialVisionSettingsId("saved-explicit-model");
+        feeder.setUsePartFiducial(false);
+        feeder.setUsePartFiducial(true);
+        assertEquals("saved-explicit-model", feeder.getFiducialVisionSettingsId());
+    }
+
+    @Test
     public void bottomLeftRowZigZagRaster() {
         assertGrid(0, 2, 0, StartCorner.BOTTOM_LEFT, FirstRasterDirection.ROW, RasterPattern.ZIG_ZAG);
         assertGrid(1, 2, 1, StartCorner.BOTTOM_LEFT, FirstRasterDirection.ROW, RasterPattern.ZIG_ZAG);
