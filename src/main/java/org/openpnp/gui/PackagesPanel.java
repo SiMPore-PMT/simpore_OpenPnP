@@ -63,7 +63,6 @@ import javax.swing.table.TableRowSorter;
 
 import org.openpnp.Translations;
 import org.openpnp.gui.components.AutoSelectTextTable;
-import org.openpnp.gui.components.CameraView;
 import org.openpnp.gui.support.AbstractConfigurationWizard;
 import org.openpnp.gui.support.ActionGroup;
 import org.openpnp.gui.support.Helpers;
@@ -87,7 +86,6 @@ import org.openpnp.model.Configuration.TablesLinked;
 import org.openpnp.model.FiducialVisionSettings;
 import org.openpnp.model.Package;
 import org.openpnp.model.Part;
-import org.openpnp.spi.Camera;
 import org.openpnp.spi.FiducialLocator;
 import org.openpnp.spi.Machine;
 import org.openpnp.spi.PartAlignment;
@@ -175,6 +173,7 @@ public class PackagesPanel extends JPanel implements WizardContainer {
         add(splitPane, BorderLayout.CENTER);
 
         tabbedPane = new JTabbedPane(JTabbedPane.TOP);
+        tabbedPane.addChangeListener(e -> updatePackageFootprintReticle());
 
         table = new AutoSelectTextTable(tableModel) {
             @Override
@@ -244,19 +243,17 @@ public class PackagesPanel extends JPanel implements WizardContainer {
         addComponentListener(new ComponentAdapter() {
             @Override
             public void componentHidden(ComponentEvent e) {
-                try {
-                    Camera camera =
-                            Configuration.get().getMachine().getDefaultHead().getDefaultCamera();
-                    CameraView cameraView = MainFrame.get().getCameraViews().getCameraView(camera);
-                    if (cameraView == null) {
-                        return;
-                    }
-                    cameraView.removeReticle(PackageVisionWizard.class.getName());
-                }
-                catch (Exception e1) {
-                }
+                PackageVisionWizard.hideReticle();
             }
         });
+    }
+
+    private void updatePackageFootprintReticle() {
+        PackageVisionWizard.hideReticle();
+        Component selected = tabbedPane.getSelectedComponent();
+        if (isShowing() && selected instanceof PackageVisionWizard) {
+            ((PackageVisionWizard) selected).showReticle();
+        }
     }
 
     public Package getSelectedPackage() {
@@ -479,6 +476,7 @@ public class PackagesPanel extends JPanel implements WizardContainer {
             }
         }
         tabbedPane.removeAll();
+        PackageVisionWizard.hideReticle();
         
         if (selectedPackage != null) {
             PackageNozzleTipsWizard packageNozzleTipsWizard = new PackageNozzleTipsWizard(selectedPackage);
@@ -530,6 +528,7 @@ public class PackagesPanel extends JPanel implements WizardContainer {
 
         revalidate();
         repaint();
+        updatePackageFootprintReticle();
     }
 
     public void selectPackageInTable(Package packag) {
