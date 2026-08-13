@@ -34,6 +34,7 @@ import javax.swing.UIManager;
 
 import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder;
 import org.openpnp.machine.reference.feeder.ReferenceTrayFeeder;
+import org.openpnp.model.Abstract2DLocatable.Side;
 import org.openpnp.model.Configuration;
 import org.openpnp.model.BoardLocation;
 import org.openpnp.model.Job;
@@ -303,7 +304,7 @@ public class OperatorRuntimeCanvas extends JPanel {
             Location local = design.getLocation().convertToUnits(LengthUnit.Millimeters);
             transform.translate(local.getX(), local.getY());
             transform.rotate(Math.toRadians(local.getRotation()));
-            if (design.getSide() == org.openpnp.model.Side.Bottom) {
+            if (design.getSide() == Side.Bottom) {
                 transform.translate(design.getPlacementsHolder().getDimensions()
                         .convertToUnits(LengthUnit.Millimeters).getX(), 0);
                 transform.scale(-1, 1);
