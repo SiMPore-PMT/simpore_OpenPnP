@@ -129,6 +129,8 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
     private JCheckBox useAsyncGcodeMotion;
     private JTextField recenterToleranceMm;
     private JTextField recenterMaxPasses;
+    private JCheckBox rotateNozzleAtPick;
+    private JCheckBox useDetectedAngleForPickRotation;
     private TrayPreviewPanel trayPreviewPanel;
     private JLabel secondRasterDirectionLabel;
     private JRadioButton firstDirectionRow;
@@ -486,6 +488,12 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         recenterMaxPasses.setColumns(10);
         visionPanel.add(recenterMaxPasses, "4, 10");
 
+        rotateNozzleAtPick = new JCheckBox("Rotate nozzle at pick");
+        visionPanel.add(rotateNozzleAtPick, "2, 12, 5, 1");
+
+        useDetectedAngleForPickRotation = new JCheckBox("Use detected angle for pick rotation");
+        visionPanel.add(useDetectedAngleForPickRotation, "2, 14, 5, 1");
+
     }
 
     // ---------- Bindings ----------
@@ -522,6 +530,9 @@ public class JEDEC_TrayFeederConfigurationWizard extends AbstractConfigurationWi
         addWrappedBinding(feeder, "useAsyncGcodeMotion", useAsyncGcodeMotion, "selected");
         addWrappedBinding(feeder, "recenterToleranceMm", recenterToleranceMm, "text", doubleConverter);
         addWrappedBinding(feeder, "recenterMaxPasses", recenterMaxPasses, "text", intConverter);
+        addWrappedBinding(feeder, "rotateNozzleAtPick", rotateNozzleAtPick, "selected");
+        addWrappedBinding(feeder, "useDetectedAngleForPickRotation",
+                useDetectedAngleForPickRotation, "selected");
         addWrappedBinding(feeder, "fiducialVisionSettingsId", fiducialVisionSettingsCombo, "selectedItem",
                 new Converter<String, AbstractVisionSettings>() {
                     @Override
