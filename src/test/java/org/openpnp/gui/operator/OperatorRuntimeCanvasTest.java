@@ -84,6 +84,33 @@ public class OperatorRuntimeCanvasTest {
     }
 
     @Test
+    public void clearingHighlightsDoesNotReportAnInspectorSelectionChange() {
+        OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
+        JEDEC_TrayFeeder tray = new JEDEC_TrayFeeder();
+        BoardLocation board = new BoardLocation(new Board());
+        final int[] selectionChanges = { 0 };
+        canvas.setListener(new NoOpListener() {
+            @Override
+            public void boardSelectionChanged(Set<PlacementsHolderLocation<?>> selection) {
+                selectionChanges[0]++;
+            }
+        });
+
+        canvas.selectBoardTarget(board);
+        assertEquals(1, selectionChanges[0]);
+        canvas.clearHighlightSelection();
+        assertTrue(canvas.getSelectedBoards().isEmpty());
+        assertNull(canvas.getSelectedPocketTarget());
+        assertEquals(1, selectionChanges[0]);
+
+        canvas.selectTrayPocket(tray, 2);
+        assertEquals(1, selectionChanges[0]);
+        canvas.clearHighlightSelection();
+        assertNull(canvas.getSelectedPocketTarget());
+        assertEquals(1, selectionChanges[0]);
+    }
+
+    @Test
     public void calculatedCardsShareWidthAndTrackContent() {
         OperatorRuntimeCanvas.LayoutGeometry geometry =
                 OperatorRuntimeCanvas.calculateLayoutGeometry(1200, 800, 2, 2, true);

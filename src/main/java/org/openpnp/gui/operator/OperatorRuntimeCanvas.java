@@ -117,6 +117,7 @@ public class OperatorRuntimeCanvas extends JPanel {
                 }
                 TrayActionHit actionHit = findTrayAction(e.getX(), e.getY());
                 if (actionHit != null && listener != null) {
+                    clearHighlightSelection();
                     if (actionHit.reset) {
                         listener.resetTray(actionHit.feeder);
                     }
@@ -165,6 +166,11 @@ public class OperatorRuntimeCanvas extends JPanel {
                     if (listener != null) {
                         listener.boardClicked(hit.boardLocation);
                     }
+                }
+                else {
+                    // Blank canvas space dismisses highlights without changing the
+                    // board currently shown in the inspector.
+                    clearHighlightSelection();
                 }
                 dragRectangle = null;
                 repaint();
@@ -234,8 +240,14 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     public void clearSelection() {
+        clearHighlightSelection();
+    }
+
+    /** Clears transient canvas highlights without changing the board inspector. */
+    public void clearHighlightSelection() {
         selectedBoards.clear();
         selectedPocketTarget = null;
+        selectedPanelQuadrant = null;
         dragRectangle = null;
         repaint();
     }
@@ -922,7 +934,6 @@ public class OperatorRuntimeCanvas extends JPanel {
         selectedPocketTarget = CameraTarget.trayPocket(hit.feeder, hit.feedIndexBase0);
         dragRectangle = null;
         if (listener != null) {
-            listener.boardSelectionChanged(getSelectedBoards());
             listener.trayPocketSelectionChanged(hit.feeder, hit.feedIndexBase0);
         }
         repaint();

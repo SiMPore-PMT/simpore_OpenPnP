@@ -1,5 +1,6 @@
 package org.openpnp.gui.operator;
 
+import java.awt.AWTEvent;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -12,7 +13,9 @@ import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
+import java.awt.event.AWTEventListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.beans.PropertyChangeListener;
@@ -142,7 +145,20 @@ public class OperatorPanel extends JPanel {
     private final Set<PlacementsHolderLocation<?>> selectedBoards = new LinkedHashSet<>();
     private final List<AbstractModelObject> feederListeners = new ArrayList<>();
     private boolean updatingDetails;
+    private boolean selectionDismissListenerInstalled;
+    private Job displayedJob;
     private final PropertyChangeListener feederPropertyListener = e -> repaintRuntime();
+    private final AWTEventListener selectionDismissListener = event -> {
+        if (!(event instanceof MouseEvent) || event.getID() != MouseEvent.MOUSE_PRESSED
+                || !(event.getSource() instanceof Component)) {
+            return;
+        }
+        Component clicked = (Component) event.getSource();
+        if (!SwingUtilities.isDescendingFrom(clicked, canvas)) {
+            canvas.clearHighlightSelection();
+            updateButtons();
+        }
+    };
 
     public OperatorPanel(MainFrame mainFrame, JobPanel jobPanel) {
         super(new BorderLayout(8, 8));
@@ -213,6 +229,25 @@ public class OperatorPanel extends JPanel {
         Configuration.get().getBus().register(this);
         updateButtons();
         refreshJobAndFeeders();
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        if (!selectionDismissListenerInstalled) {
+            Toolkit.getDefaultToolkit().addAWTEventListener(selectionDismissListener,
+                    AWTEvent.MOUSE_EVENT_MASK);
+            selectionDismissListenerInstalled = true;
+        }
+    }
+
+    @Override
+    public void removeNotify() {
+        if (selectionDismissListenerInstalled) {
+            Toolkit.getDefaultToolkit().removeAWTEventListener(selectionDismissListener);
+            selectionDismissListenerInstalled = false;
+        }
+        super.removeNotify();
     }
 
     private JPanel createHeaderPanel() {
@@ -659,7 +694,12 @@ public class OperatorPanel extends JPanel {
     }
 
     private void refreshJobAndFeeders() {
-        canvas.setJob(jobPanel.getJob());
+        Job job = jobPanel.getJob();
+        if (displayedJob != job) {
+            displayedJob = job;
+            selectedBoards.clear();
+        }
+        canvas.setJob(job);
         for (AbstractModelObject modelObject : feederListeners) {
             modelObject.removePropertyChangeListener(feederPropertyListener);
         }
@@ -747,13 +787,8 @@ public class OperatorPanel extends JPanel {
             }
             @Override
             public void trayPocketSelectionChanged(JEDEC_TrayFeeder feeder, int feedIndexBase0) {
-                selectedBoards.clear();
-                selectionLabel.setText("Tray: " + feeder.getName() + " • Pocket "
-                        + (feedIndexBase0 + 1) + " selected");
-                updatingDetails = true;
-                placementDetailsModel.setRowCount(0);
-                detailRows.clear();
-                updatingDetails = false;
+                // Tray selection changes camera navigation only. Keep the most recently
+                // inspected board until another board/panel or job is selected.
                 updateButtons();
             }
         };
