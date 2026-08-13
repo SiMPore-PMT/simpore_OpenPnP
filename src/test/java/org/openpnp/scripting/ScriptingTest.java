@@ -99,6 +99,13 @@ public class ScriptingTest {
             throw new Exception("Engines in the pool even if pooling is disabled");
         }
 
+        // ==== Test 1a ====
+        // Check that blank scripts execute without referencing any optional globals.
+        // ================
+        File blankScript = new File(scriptsDirectory, "blank.java");
+        FileUtils.writeStringToFile(blankScript, "", "UTF-8");
+        scripting.execute(blankScript, testGlobals);
+
         // ==== Test 1b ====
         // Check that it runs all the right script files, and in the right order. In this case two scripts for one event
         // ================

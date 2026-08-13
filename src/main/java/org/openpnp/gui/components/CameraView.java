@@ -372,16 +372,21 @@ public class CameraView extends JComponent implements CameraListener {
         }
         else {
             reticles.put(key, reticle);
+            repaint();
         }
+    }
+
+    public Reticle removeReticle(Object key) {
+        Reticle reticle = reticles.remove(key);
+        repaint();
+        return reticle;
     }
 
     public Reticle getReticle(Object key) {
         return reticles.get(key);
     }
 
-    public Reticle removeReticle(Object key) {
-        return reticles.remove(key);
-    }
+
 
     public CameraViewSelectionTextDelegate getSelectionTextDelegate() {
         return selectionTextDelegate;

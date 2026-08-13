@@ -1,0 +1,17 @@
+<openpnp-board version="1.1" name="transWellManifold.board.xml">
+   <dimensions units="Millimeters" x="19.0" y="19.0" z="0.0" rotation="0.0"/>
+   <placements>
+      <placement version="1.4" side="Top" id="FID" part-id="FIDUCIAL-TransWell" type="Fiducial" enabled="true" rank="0">
+         <location units="Millimeters" x="0.0" y="0.0" z="0.0" rotation="0.0"/>
+         <comments>Determine pose correction for part placement</comments>
+         <error-handling>Default</error-handling>
+      </placement>
+      <placement version="1.4" side="Top" id="Si_Die" part-id="Si_N2_5.4mm" type="Placement" enabled="true" rank="0">
+         <location units="Millimeters" x="0.0" y="0.0" z="0.0" rotation="0.0"/>
+         <comments>The single chip to be placed into a single manifold</comments>
+         <error-handling>Default</error-handling>
+      </placement>
+   </placements>
+   <fiducials/>
+   <solder-paste-pads/>
+</openpnp-board>

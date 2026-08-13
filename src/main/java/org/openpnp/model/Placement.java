@@ -36,6 +36,7 @@ public class Placement extends Abstract2DLocatable<Placement> {
     public enum Type {
         Placement, 
         Fiducial,
+        Dispense,
         @Deprecated
         Place, 
         @Deprecated
@@ -52,8 +53,9 @@ public class Placement extends Abstract2DLocatable<Placement> {
      * 1.2: Removed glue attribute.
      * 1.3: Removed checkFids attribute.
      * 1.4: Changed Type.Place to Type.Placement, and removed Type.Ignore.
+     * 1.5: Added Type.Dispense.
      */
-    @Version(revision = 1.4)
+    @Version(revision = 1.5)
     private double version;
 
     @Attribute(required = false)

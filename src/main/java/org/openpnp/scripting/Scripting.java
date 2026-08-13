@@ -22,6 +22,7 @@ import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.pool2.impl.DefaultPooledObjectInfo;
 import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
 import org.openjdk.nashorn.api.scripting.NashornScriptEngineFactory;
+import org.openpnp.gui.JobPanel;
 import org.openpnp.gui.MainFrame;
 import org.openpnp.model.Configuration;
 import org.pmw.tinylog.Logger;
@@ -179,6 +180,61 @@ public class Scripting {
         bindings.put("machine", Configuration.get()
                                              .getMachine());
         bindings.put("gui", MainFrame.get());
+        bindings.put("jobState", new Object() {
+            private JobPanel getJobPanel() {
+                MainFrame frame = MainFrame.get();
+                if (frame == null) {
+                    return null;
+                }
+                JobPanel jobPanel = frame.getJobTab();
+                if (jobPanel == null) {
+                    return null;
+                }
+                return jobPanel;
+            }
+
+            public String get() {
+                try {
+                    JobPanel jobPanel = getJobPanel();
+                    if (jobPanel == null) {
+                        return "Stopped";
+                    }
+                    return jobPanel.getJobState();
+                }
+                catch (RuntimeException e) {
+                    Logger.trace(e, "Unable to read job state for script");
+                    return "Stopped";
+                }
+            }
+
+            public boolean isPauseRequested() {
+                try {
+                    JobPanel jobPanel = getJobPanel();
+                    if (jobPanel == null) {
+                        return false;
+                    }
+                    return jobPanel.isPauseRequested();
+                }
+                catch (RuntimeException e) {
+                    Logger.trace(e, "Unable to read script pause request state");
+                    return false;
+                }
+            }
+
+            public String pauseIfRequested() throws InterruptedException {
+                try {
+                    JobPanel jobPanel = getJobPanel();
+                    if (jobPanel == null) {
+                        return "Stopped";
+                    }
+                    return jobPanel.pauseIfRequested();
+                }
+                catch (RuntimeException e) {
+                    Logger.trace(e, "Unable to perform script pause handshake");
+                    return "Stopped";
+                }
+            }
+        });
         bindings.put("scripting", this);
         bindings.put(ScriptEngine.FILENAME, script.getName());
         if (additionalGlobals != null) {
@@ -190,11 +246,14 @@ public class Scripting {
 
         boolean execError = false;
         startTimeNs = System.nanoTime();
+        Logger.trace("Executing script " + script.getName());
         try (FileReader reader = new FileReader(script)) {
             engine.eval(reader);
+            Logger.trace("Completed script " + script.getName());
         }
         catch (Exception e) {
             execError = true;
+            Logger.trace(e, "Script " + script.getName() + " threw an exception");
             throw e;
         }
         finally {

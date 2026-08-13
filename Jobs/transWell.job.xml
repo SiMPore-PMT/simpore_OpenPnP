@@ -1,0 +1,110 @@
+<openpnp-job version="2.0">
+   <root-panel version="2.0">
+      <dimensions units="Millimeters" x="0.0" y="0.0" z="0.0" rotation="0.0"/>
+      <placements/>
+      <children>
+         <object class="org.openpnp.model.PanelLocation" side="Top" id="Tray Position 1" file-name="/home/engineering-simpore/OpenPnP/panels/transWell_4-6_tray.xml.panel.xml" check-fiducials="false" locally-enabled="true">
+            <location units="Millimeters" x="154.66217046942978" y="26.160545400657142" z="5.2" rotation="0.0"/>
+         </object>
+      </children>
+      <pseudo-placement-ids/>
+   </root-panel>
+   <placed-status-map class="java.util.HashMap"/>
+   <enabled-state-map class="java.util.HashMap">
+      <entry>
+         <string>Tray Position 1⇒Brd1[2,1]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[1,3]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[2,2]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[1,4]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[2,3]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[2,4]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[6,4]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[5,3]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[6,2]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[4,4]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[5,4]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[6,3]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[3,4]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[4,3]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[5,1]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[3,3]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[4,2]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[5,2]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[6,1]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[3,2]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[4,1]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[3,1]</string>
+         <boolean>false</boolean>
+      </entry>
+      <entry>
+         <string>Tray Position 1⇒Brd1[3,1]⇒Si_Die</string>
+         <boolean>false</boolean>
+      </entry>
+   </enabled-state-map>
+   <check-fiducials-state-map class="java.util.HashMap"/>
+   <error-handling-state-map class="java.util.HashMap"/>
+   <error-handling>Alert</error-handling>
+</openpnp-job>
