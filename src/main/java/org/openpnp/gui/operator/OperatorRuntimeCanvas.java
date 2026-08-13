@@ -104,19 +104,26 @@ public class OperatorRuntimeCanvas extends JPanel {
         setPreferredSize(new Dimension(760, 520));
         setBackground(BACKGROUND);
         MouseAdapter mouseAdapter = new MouseAdapter() {
+            private boolean pressHandledByCanvasControl;
+
             @Override
             public void mousePressed(MouseEvent e) {
+                pressHandledByCanvasControl = false;
                 if (e.isPopupTrigger()) {
                     showPopup(e);
+                    pressHandledByCanvasControl = true;
                     return;
                 }
                 PanelQuadrantHit quadrantHit = findPanelQuadrant(e.getX(), e.getY());
                 if (quadrantHit != null) {
+                    pressHandledByCanvasControl = true;
                     selectPanelQuadrant(quadrantHit.slot.quadrant);
                     return;
                 }
                 TrayActionHit actionHit = findTrayAction(e.getX(), e.getY());
                 if (actionHit != null && listener != null) {
+                    pressHandledByCanvasControl = true;
+                    clearHighlightSelection();
                     if (actionHit.reset) {
                         listener.resetTray(actionHit.feeder);
                     }
@@ -127,6 +134,7 @@ public class OperatorRuntimeCanvas extends JPanel {
                 }
                 TrayPocketHit pocketHit = findTrayPocket(e.getX(), e.getY());
                 if (pocketHit != null) {
+                    pressHandledByCanvasControl = true;
                     selectTrayPocket(pocketHit);
                     return;
                 }
@@ -150,6 +158,13 @@ public class OperatorRuntimeCanvas extends JPanel {
             public void mouseReleased(MouseEvent e) {
                 if (e.isPopupTrigger()) {
                     showPopup(e);
+                    pressHandledByCanvasControl = false;
+                    return;
+                }
+                // Tray pockets and the other canvas controls act on mouse press. Do not
+                // reinterpret the matching release as a click on blank board space.
+                if (pressHandledByCanvasControl) {
+                    pressHandledByCanvasControl = false;
                     return;
                 }
                 boolean editSelection = editMode != EditMode.NONE && editingAllowed;
@@ -165,6 +180,11 @@ public class OperatorRuntimeCanvas extends JPanel {
                     if (listener != null) {
                         listener.boardClicked(hit.boardLocation);
                     }
+                }
+                else {
+                    // Blank canvas space dismisses highlights without changing the
+                    // board currently shown in the inspector.
+                    clearHighlightSelection();
                 }
                 dragRectangle = null;
                 repaint();
@@ -204,6 +224,15 @@ public class OperatorRuntimeCanvas extends JPanel {
         return null;
     }
 
+    Rectangle getTrayPocketHitBounds(JEDEC_TrayFeeder feeder, int feedIndexBase0) {
+        for (TrayPocketHit hit : trayPocketHits) {
+            if (hit.feeder == feeder && hit.feedIndexBase0 == feedIndexBase0) {
+                return new Rectangle(hit.bounds);
+            }
+        }
+        return null;
+    }
+
     public void setJob(Job job) {
         if (this.job != job) {
             selectedBoards.clear();
@@ -234,8 +263,14 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     public void clearSelection() {
+        clearHighlightSelection();
+    }
+
+    /** Clears transient canvas highlights without changing the board inspector. */
+    public void clearHighlightSelection() {
         selectedBoards.clear();
         selectedPocketTarget = null;
+        selectedPanelQuadrant = null;
         dragRectangle = null;
         repaint();
     }
@@ -412,21 +447,22 @@ public class OperatorRuntimeCanvas extends JPanel {
             g2.fillRoundRect(px, py, cell - 2, cell - 2, 3, 3);
             g2.setColor(new Color(255, 255, 255, 85));
             g2.drawRoundRect(px, py, cell - 2, cell - 2, 3, 3);
-            if (enabled && index == nextIndex) {
-                g2.setStroke(new BasicStroke(2.4f));
-                g2.setColor(PLACED);
-                g2.drawRoundRect(px - 2, py - 2, cell + 2, cell + 2, 6, 6);
-                g2.setStroke(new BasicStroke(1.5f));
-            }
+            Stroke oldStroke = g2.getStroke();
             if (isSelectedPocket(tray, index)) {
-                Stroke oldStroke = g2.getStroke();
                 g2.setColor(new Color(35, 78, 128));
                 g2.fillRoundRect(px, py, cell - 2, cell - 2, 3, 3);
                 g2.setStroke(new BasicStroke(3f));
                 g2.setColor(new Color(205, 92, 255));
                 g2.drawRoundRect(px - 2, py - 2, cell + 2, cell + 2, 6, 6);
-                g2.setStroke(oldStroke);
             }
+            if (enabled && index == nextIndex) {
+                // Draw this after selection so the current-pocket gold marker remains
+                // visible inside the purple selection outline.
+                g2.setStroke(new BasicStroke(2.4f));
+                g2.setColor(PLACED);
+                g2.drawRoundRect(px + 1, py + 1, cell - 4, cell - 4, 4, 4);
+            }
+            g2.setStroke(oldStroke);
             trayPocketHits.add(new TrayPocketHit(tray, index, index + 1,
                     new Rectangle(px, py, cell - 2, cell - 2)));
         }
@@ -921,7 +957,6 @@ public class OperatorRuntimeCanvas extends JPanel {
         selectedPocketTarget = CameraTarget.trayPocket(hit.feeder, hit.feedIndexBase0);
         dragRectangle = null;
         if (listener != null) {
-            listener.boardSelectionChanged(getSelectedBoards());
             listener.trayPocketSelectionChanged(hit.feeder, hit.feedIndexBase0);
         }
         repaint();
