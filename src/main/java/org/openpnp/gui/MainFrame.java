@@ -289,6 +289,7 @@ public class MainFrame extends JFrame {
         }
         if (this.accessLevel == AccessLevel.OPERATOR) {
             splitPaneMachineAndTabs.setRightComponent(getOperatorTabs());
+            operatorPanel.operatorViewActivated();
         }
         else {
             ensureAdminTabs();

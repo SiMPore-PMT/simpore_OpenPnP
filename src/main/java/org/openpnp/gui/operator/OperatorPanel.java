@@ -733,6 +733,17 @@ public class OperatorPanel extends JPanel {
         repaintRuntime();
     }
 
+    /** Synchronizes the persistent operator view when it is installed after being hidden. */
+    public void operatorViewActivated() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(this::operatorViewActivated);
+            return;
+        }
+        refreshJobAndFeeders();
+        updateButtons();
+        repaintRuntime();
+    }
+
     private void restoreTrayProgress() throws Exception {
         Machine machine = Configuration.get().getMachine();
         if (machine == null) {

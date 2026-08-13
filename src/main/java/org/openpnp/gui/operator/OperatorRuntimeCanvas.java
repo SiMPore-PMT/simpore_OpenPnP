@@ -17,7 +17,9 @@ import java.awt.event.MouseEvent;
 import java.awt.font.GlyphVector;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Ellipse2D;
+import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -35,6 +37,7 @@ import org.openpnp.machine.reference.feeder.ReferenceTrayFeeder;
 import org.openpnp.model.Configuration;
 import org.openpnp.model.BoardLocation;
 import org.openpnp.model.Job;
+import org.openpnp.model.LengthUnit;
 import org.openpnp.model.Location;
 import org.openpnp.model.PanelLocation;
 import org.openpnp.model.Placement;
@@ -89,6 +92,7 @@ public class OperatorRuntimeCanvas extends JPanel {
     private EditMode editMode = EditMode.NONE;
     private boolean editingAllowed;
     private final HashMap<String, Location> stableLayoutLocationsById = new HashMap<>();
+    private Object layoutJobIdentity;
     private final Set<PlacementsHolderLocation<?>> selectedBoards = new LinkedHashSet<>();
     private final List<BoardHit> boardHits = new ArrayList<>();
     private final List<TrayPocketHit> trayPocketHits = new ArrayList<>();
@@ -204,9 +208,6 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     public void setEditingAllowed(boolean editingAllowed) {
-        if (this.editingAllowed && !editingAllowed) {
-            captureRuntimeLayout();
-        }
         this.editingAllowed = editingAllowed;
         repaint();
     }
@@ -234,24 +235,89 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     public void setJob(Job job) {
-        if (this.job != job) {
+        Object newIdentity = logicalJobIdentity(job);
+        boolean differentJob = !sameLogicalJob(layoutJobIdentity, newIdentity);
+        if (this.job != job || differentJob) {
             selectedBoards.clear();
             selectedPanelQuadrant = null;
             selectedPocketTarget = null;
             this.job = job;
-            captureRuntimeLayout();
         }
+        synchronizeLayoutSnapshot(differentJob);
         repaint();
     }
 
-    private void captureRuntimeLayout() {
-        stableLayoutLocationsById.clear();
+    /** Explicitly establishes the currently loaded job design as a new layout. */
+    public void resetLayoutSnapshot() {
+        synchronizeLayoutSnapshot(true);
+        repaint();
+    }
+
+    private void synchronizeLayoutSnapshot(boolean replace) {
+        Object identity = logicalJobIdentity(job);
+        if (replace) {
+            stableLayoutLocationsById.clear();
+        }
+        layoutJobIdentity = identity;
         if (job == null) {
             return;
         }
+        Set<String> currentIds = new LinkedHashSet<>();
         for (PlacementsHolderLocation<?> board : job.getBoardLocations()) {
-            stableLayoutLocationsById.put(board.getUniqueId(), board.getGlobalLocation());
+            String id = board.getUniqueId();
+            currentIds.add(id);
+            stableLayoutLocationsById.computeIfAbsent(id,
+                    ignored -> snapshot(designLayoutLocation(board)));
         }
+        stableLayoutLocationsById.keySet().retainAll(currentIds);
+    }
+
+    private static Object logicalJobIdentity(Job job) {
+        if (job == null) {
+            return null;
+        }
+        File file = job.getFile();
+        return file == null ? job : file.getAbsoluteFile().toPath().normalize().toString();
+    }
+
+    private static boolean sameLogicalJob(Object first, Object second) {
+        return first == second || first != null && first.equals(second);
+    }
+
+    /**
+     * Builds the display position from the job-design hierarchy, deliberately bypassing
+     * fiducial transforms. Definitions retain the authored local coordinates when job
+     * instances have been calibrated.
+     */
+    private static Location designLayoutLocation(PlacementsHolderLocation<?> location) {
+        List<PlacementsHolderLocation<?>> lineage = new ArrayList<>();
+        for (PlacementsHolderLocation<?> node = location; node != null; node = node.getParent()) {
+            lineage.add(0, node);
+        }
+        AffineTransform transform = new AffineTransform();
+        double z = 0;
+        double rotation = 0;
+        for (PlacementsHolderLocation<?> instance : lineage) {
+            PlacementsHolderLocation<?> design = instance.getDefinition() == null
+                    ? instance : instance.getDefinition();
+            Location local = design.getLocation().convertToUnits(LengthUnit.Millimeters);
+            transform.translate(local.getX(), local.getY());
+            transform.rotate(Math.toRadians(local.getRotation()));
+            if (design.getSide() == org.openpnp.model.Side.Bottom) {
+                transform.translate(design.getPlacementsHolder().getDimensions()
+                        .convertToUnits(LengthUnit.Millimeters).getX(), 0);
+                transform.scale(-1, 1);
+            }
+            z += local.getZ();
+            rotation += local.getRotation();
+        }
+        Point2D point = transform.transform(new Point2D.Double(), null);
+        return new Location(LengthUnit.Millimeters, point.getX(), point.getY(), z, rotation);
+    }
+
+    private static Location snapshot(Location location) {
+        return new Location(location.getUnits(), location.getX(), location.getY(),
+                location.getZ(), location.getRotation());
     }
 
     private Location getLayoutLocation(PlacementsHolderLocation<?> board) {

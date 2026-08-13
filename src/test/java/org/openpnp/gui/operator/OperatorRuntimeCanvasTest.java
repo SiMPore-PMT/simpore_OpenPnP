@@ -255,6 +255,61 @@ public class OperatorRuntimeCanvasTest {
         assertEquals(secondBefore, canvas.getBoardHitBounds(replacement));
     }
 
+    @Test
+    public void differentJobReplacesLayoutSnapshot() {
+        OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
+        canvas.setBounds(0, 0, 900, 600);
+        Job firstJob = jobWith(boardAt("Shared", 0, 0), boardAt("Right", 40, 0));
+        canvas.setJob(firstJob);
+        paint(canvas);
+        Rectangle sharedInFirstJob = canvas.getBoardHitBounds(firstJob.getBoardLocations().get(0));
+
+        Job secondJob = jobWith(boardAt("Shared", 0, 0), boardAt("Above", 0, 30));
+        canvas.setJob(secondJob);
+        paint(canvas);
+
+        Rectangle sharedInSecondJob = canvas.getBoardHitBounds(secondJob.getBoardLocations().get(0));
+        Rectangle above = canvas.getBoardHitBounds(secondJob.getBoardLocations().get(1));
+        assertEquals(sharedInSecondJob.x, above.x);
+        assertTrue(sharedInSecondJob.y > above.y);
+        assertTrue(!sharedInFirstJob.equals(sharedInSecondJob));
+    }
+
+    @Test
+    public void sameJobRefreshMergesAddedAndRemovedBoardIds() {
+        BoardLocation retained = boardAt("Retained", 0, 0);
+        BoardLocation removed = boardAt("Removed", 40, 0);
+        Job job = jobWith(retained, removed);
+        OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
+        canvas.setBounds(0, 0, 900, 600);
+        canvas.setJob(job);
+        paint(canvas);
+        Rectangle retainedBefore = canvas.getBoardHitBounds(retained);
+
+        retained.setGlobalLocation(new Location(LengthUnit.Millimeters, 7, 9, 0, 0));
+        BoardLocation replacement = boardAt("Replacement", 7, 9);
+        replacement.setId(retained.getId());
+        BoardLocation added = boardAt("Added", 0, 30);
+        job.getRootPanelLocation().removeChild(retained);
+        job.getRootPanelLocation().removeChild(removed);
+        job.getRootPanelLocation().addChild(replacement);
+        job.getRootPanelLocation().addChild(added);
+        canvas.setJob(job);
+        paint(canvas);
+
+        assertEquals(retainedBefore.x, canvas.getBoardHitBounds(replacement).x);
+        assertTrue(canvas.getBoardHitBounds(added).y < canvas.getBoardHitBounds(replacement).y);
+        assertNull(canvas.getBoardHitBounds(removed));
+    }
+
+    private static Job jobWith(BoardLocation... boards) {
+        Job job = new Job();
+        for (BoardLocation board : boards) {
+            job.getRootPanelLocation().getPanel().addChild(board);
+        }
+        return job;
+    }
+
     private static BoardLocation boardAt(String id, double x, double y) {
         Board board = new Board();
         board.setName(id);
