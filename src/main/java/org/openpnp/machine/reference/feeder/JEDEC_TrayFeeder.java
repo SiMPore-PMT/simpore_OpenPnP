@@ -2,14 +2,13 @@ package org.openpnp.machine.reference.feeder;
 
 import javax.swing.Action;
 
-import org.apache.commons.io.IOUtils;
 import org.opencv.core.RotatedRect;
 import org.openpnp.gui.MainFrame;
 import org.openpnp.gui.support.PropertySheetWizardAdapter;
 import org.openpnp.gui.support.Wizard;
 import org.openpnp.machine.reference.ReferenceFeeder;
-import org.openpnp.machine.reference.feeder.wizards.AdvancedLoosePartFeederConfigurationWizard;
 import org.openpnp.machine.reference.feeder.wizards.JEDEC_TrayFeederConfigurationWizard;
+import org.openpnp.machine.reference.vision.ReferenceFiducialLocator;
 import org.openpnp.model.Configuration;
 import org.openpnp.model.FiducialVisionSettings;
 import org.openpnp.model.Length;
@@ -48,14 +47,11 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     public static final double DEFAULT_RECENTER_TOLERANCE_MM = 0.02;
     public static final int DEFAULT_RECENTER_MAX_PASSES = 3;
 
-    /**
-     * New -> From advancedLoosePartFeeder
-     */
-    @Element(required = false)
-    private CvPipeline pipeline = createDefaultPipeline();
-
-    @Transient
+    @Attribute(required = false)
     private String fiducialVisionSettingsId;
+
+    @Attribute(required = false)
+    private boolean usePartFiducial = true;
 
     @Attribute(required = false)
     private boolean useAdvancedCameraCalibration = false;
@@ -869,10 +865,6 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         return true;
     }
 
-    public CvPipeline getPipeline() {
-        return pipeline;
-    }
-
     public FiducialVisionSettings getFiducialVisionSettings() {
         if (fiducialVisionSettingsId == null || fiducialVisionSettingsId.isEmpty()) {
             return null;
@@ -901,29 +893,58 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
         firePropertyChange("fiducialVisionSettings", oldValue, getFiducialVisionSettings());
     }
 
-    private CvPipeline getPipelineForProcessing() throws CloneNotSupportedException {
-        FiducialVisionSettings fiducialVisionSettings = getFiducialVisionSettings();
-        if (fiducialVisionSettings != null && fiducialVisionSettings.getPipeline() != null) {
-            return fiducialVisionSettings.getPipeline().clone();
-        }
-        return getPipeline().clone();
+    public boolean isUsePartFiducial() {
+        return usePartFiducial;
     }
 
-    public void resetPipeline() {
-        pipeline = createDefaultPipeline();
+    public void setUsePartFiducial(boolean usePartFiducial) {
+        boolean oldValue = this.usePartFiducial;
+        this.usePartFiducial = usePartFiducial;
+        firePropertyChange("usePartFiducial", oldValue, usePartFiducial);
     }
 
-
-    public static CvPipeline createDefaultPipeline() {
-        try {
-            String xml = IOUtils.toString(AdvancedLoosePartFeeder.class
-                    .getResource("AdvancedLoosePartFeeder-DefaultPipeline.xml"));
-            return new CvPipeline(xml);
+    /** Returns the shared settings object selected for this feeder. Callers editing it
+     * intentionally edit the shared vision model. */
+    public FiducialVisionSettings getActiveFiducialVisionSettings() throws Exception {
+        if (usePartFiducial) {
+            if (getPart() == null) {
+                throw new Exception("Feeder " + getName() + " has no Part from which to inherit fiducial vision settings.");
+            }
+            ReferenceFiducialLocator locator = ReferenceFiducialLocator.getDefault();
+            FiducialVisionSettings settings = locator == null ? null
+                    : locator.getInheritedVisionSettings(getPart());
+            if (settings == null) {
+                throw new Exception("Part " + getPart().getId() + " has no effective top fiducial vision model.");
+            }
+            return settings;
         }
-        catch (Exception e) {
-            throw new Error(e);
+        FiducialVisionSettings settings = getFiducialVisionSettings();
+        if (settings == null) {
+            throw new Exception(fiducialVisionSettingsId == null || fiducialVisionSettingsId.isEmpty()
+                    ? "No explicit top fiducial vision model is selected for feeder " + getName() + "."
+                    : "The selected top fiducial vision model " + fiducialVisionSettingsId
+                            + " is no longer available for feeder " + getName() + ".");
         }
+        return settings;
     }
 
+    public CvPipeline getActivePipeline() throws Exception {
+        FiducialVisionSettings settings = getActiveFiducialVisionSettings();
+        CvPipeline activePipeline = settings.getPipeline();
+        if (activePipeline == null) {
+            throw new Exception("Top fiducial vision model " + getVisionSettingsDisplayName(settings)
+                    + " has no pipeline.");
+        }
+        return activePipeline;
+    }
+
+    private CvPipeline getPipelineForProcessing() throws Exception {
+        return getActivePipeline().clone();
+    }
+
+    public static String getVisionSettingsDisplayName(FiducialVisionSettings settings) {
+        return settings.getName() == null || settings.getName().trim().isEmpty()
+                ? settings.getId() : settings.getName();
+    }
 
 }
