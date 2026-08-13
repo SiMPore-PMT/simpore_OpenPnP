@@ -17,7 +17,7 @@ import org.openpnp.model.LengthUnit;
 import org.openpnp.model.Location;
 import org.openpnp.spi.Camera;
 import org.openpnp.spi.MotionPlanner.CompletionType;
-import org.openpnp.spi.Movable.LocationOption;
+import org.openpnp.spi.Locatable.LocationOption;
 import org.openpnp.spi.Nozzle;
 import org.openpnp.spi.PropertySheetHolder;
 import org.openpnp.util.MovableUtils;
