@@ -412,21 +412,22 @@ public class OperatorRuntimeCanvas extends JPanel {
             g2.fillRoundRect(px, py, cell - 2, cell - 2, 3, 3);
             g2.setColor(new Color(255, 255, 255, 85));
             g2.drawRoundRect(px, py, cell - 2, cell - 2, 3, 3);
-            if (enabled && index == nextIndex) {
-                g2.setStroke(new BasicStroke(2.4f));
-                g2.setColor(PLACED);
-                g2.drawRoundRect(px - 2, py - 2, cell + 2, cell + 2, 6, 6);
-                g2.setStroke(new BasicStroke(1.5f));
-            }
+            Stroke oldStroke = g2.getStroke();
             if (isSelectedPocket(tray, index)) {
-                Stroke oldStroke = g2.getStroke();
                 g2.setColor(new Color(35, 78, 128));
                 g2.fillRoundRect(px, py, cell - 2, cell - 2, 3, 3);
                 g2.setStroke(new BasicStroke(3f));
                 g2.setColor(new Color(205, 92, 255));
                 g2.drawRoundRect(px - 2, py - 2, cell + 2, cell + 2, 6, 6);
-                g2.setStroke(oldStroke);
             }
+            if (enabled && index == nextIndex) {
+                // Draw this after selection so the current-pocket gold marker remains
+                // visible inside the purple selection outline.
+                g2.setStroke(new BasicStroke(2.4f));
+                g2.setColor(PLACED);
+                g2.drawRoundRect(px + 1, py + 1, cell - 4, cell - 4, 4, 4);
+            }
+            g2.setStroke(oldStroke);
             trayPocketHits.add(new TrayPocketHit(tray, index, index + 1,
                     new Rectangle(px, py, cell - 2, cell - 2)));
         }

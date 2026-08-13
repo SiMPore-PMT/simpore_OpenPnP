@@ -141,9 +141,10 @@ public class OperatorJobEditingService {
     public int setJedecTrayStartingPosition(Job job, JEDEC_TrayFeeder feeder, int displayPosition) throws IOException {
         int max = Math.max(1, feeder.getEffectiveTrayCountRows() * feeder.getEffectiveTrayCountCols());
         int position = Math.max(1, Math.min(displayPosition, max));
-        // JEDEC_TrayFeeder uses feedCount 0 for a fresh tray. After the operator chooses
-        // displayed pocket N as the next pocket, store N so previous positions render as consumed.
-        feeder.setFeedCount(position);
+        // feedCount is the number of pockets already consumed. JEDEC_TrayFeeder.feed()
+        // increments it before picking, so displayed pocket N must store N - 1. This also
+        // keeps the canvas's "Next pick" marker on the pocket chosen by the operator.
+        feeder.setFeedCount(position - 1);
         saveTrayProgress(job, feeder);
         return feeder.getFeedCount();
     }

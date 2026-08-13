@@ -102,8 +102,11 @@ public class OperatorJobEditingServiceTest {
         feeder.setTrayCountRows(2);
         feeder.setTrayCountCols(4);
 
-        assertEquals(5, service.setJedecTrayStartingPosition(null, feeder, 5));
-        assertEquals(5, feeder.getFeedCount());
+        assertEquals(4, service.setJedecTrayStartingPosition(null, feeder, 5));
+        assertEquals(4, feeder.getFeedCount());
+
+        assertEquals(0, service.setJedecTrayStartingPosition(null, feeder, 1));
+        assertEquals(7, service.setJedecTrayStartingPosition(null, feeder, 99));
 
         assertEquals(0, service.resetJedecTray(null, feeder));
         assertEquals(0, feeder.getFeedCount());
