@@ -802,28 +802,41 @@ public class OperatorRuntimeCanvas extends JPanel {
                 labelBounds.y + 12);
     }
 
-    private List<PanelSlot> getPanelSlots(Job job) {
+    List<PanelSlot> getPanelSlots(Job job) {
         List<PlacementsHolderLocation<?>> candidates = getPanelCandidates(job);
-        double centerX = 0;
-        double centerY = 0;
+        double minX = Double.POSITIVE_INFINITY;
+        double maxX = Double.NEGATIVE_INFINITY;
+        double minY = Double.POSITIVE_INFINITY;
+        double maxY = Double.NEGATIVE_INFINITY;
         for (PlacementsHolderLocation<?> candidate : candidates) {
-            Location location = candidate.getGlobalLocation();
-            centerX += location.getX();
-            centerY += location.getY();
+            Location location = designLayoutLocation(candidate);
+            minX = Math.min(minX, location.getX());
+            maxX = Math.max(maxX, location.getX());
+            minY = Math.min(minY, location.getY());
+            maxY = Math.max(maxY, location.getY());
         }
-        if (!candidates.isEmpty()) {
-            centerX /= candidates.size();
-            centerY /= candidates.size();
-        }
+        double xSpan = maxX - minX;
+        double ySpan = maxY - minY;
+        double dominantSpan = Math.max(xSpan, ySpan);
+        double epsilon = 0.001;
+        boolean splitX = xSpan > epsilon && xSpan >= dominantSpan * 0.5;
+        boolean splitY = ySpan > epsilon && ySpan >= dominantSpan * 0.5;
+        double midpointX = (minX + maxX) / 2.0;
+        double midpointY = (minY + maxY) / 2.0;
         EnumMap<PanelQuadrant, PanelSlot> byQuadrant = new EnumMap<>(PanelQuadrant.class);
         for (PanelQuadrant quadrant : PanelQuadrant.values()) {
             byQuadrant.put(quadrant, new PanelSlot(quadrant, null));
         }
         for (PlacementsHolderLocation<?> candidate : candidates) {
-            PanelQuadrant quadrant = classifyQuadrant(candidate.getGlobalLocation(), centerX, centerY);
+            Location location = designLayoutLocation(candidate);
+            boolean right = splitX && location.getX() > midpointX;
+            boolean top = splitY && location.getY() > midpointY;
+            PanelQuadrant quadrant = right
+                    ? top ? PanelQuadrant.TOP_RIGHT : PanelQuadrant.BOTTOM_RIGHT
+                    : top ? PanelQuadrant.TOP_LEFT : PanelQuadrant.BOTTOM_LEFT;
             PanelSlot current = byQuadrant.get(quadrant);
-            if (current.location == null || quadrantScore(candidate.getGlobalLocation(), centerX, centerY, quadrant) >
-                    quadrantScore(current.location.getGlobalLocation(), centerX, centerY, quadrant)) {
+            if (current.location == null || quadrantScore(location, midpointX, midpointY, quadrant) >
+                    quadrantScore(designLayoutLocation(current.location), midpointX, midpointY, quadrant)) {
                 byQuadrant.put(quadrant, new PanelSlot(quadrant, candidate));
             }
         }
@@ -903,21 +916,6 @@ public class OperatorRuntimeCanvas extends JPanel {
                 collectBoardLocations(child, boards);
             }
         }
-    }
-
-    private PanelQuadrant classifyQuadrant(Location location, double centerX, double centerY) {
-        boolean right = location.getX() > centerX;
-        boolean top = location.getY() > centerY;
-        if (top && right) {
-            return PanelQuadrant.TOP_RIGHT;
-        }
-        if (top) {
-            return PanelQuadrant.TOP_LEFT;
-        }
-        if (right) {
-            return PanelQuadrant.BOTTOM_RIGHT;
-        }
-        return PanelQuadrant.BOTTOM_LEFT;
     }
 
     private double quadrantScore(Location location, double centerX, double centerY, PanelQuadrant quadrant) {
@@ -1075,7 +1073,7 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
 
-    private enum PanelQuadrant {
+    enum PanelQuadrant {
         BOTTOM_LEFT("BL", "Bottom Left", false, false),
         BOTTOM_RIGHT("BR", "Bottom Right", true, false),
         TOP_LEFT("TL", "Top Left", false, true),
@@ -1098,7 +1096,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         }
     }
 
-    private static class PanelSlot {
+    static class PanelSlot {
         final PanelQuadrant quadrant;
         final PlacementsHolderLocation<?> location;
         PanelSlot(PanelQuadrant quadrant, PlacementsHolderLocation<?> location) {

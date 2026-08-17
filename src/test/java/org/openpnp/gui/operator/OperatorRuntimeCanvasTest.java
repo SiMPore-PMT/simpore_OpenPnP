@@ -11,6 +11,7 @@ import java.awt.Rectangle;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.List;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeAll;
@@ -300,6 +301,70 @@ public class OperatorRuntimeCanvasTest {
         assertEquals(retainedBefore.x, canvas.getBoardHitBounds(replacement).x);
         assertTrue(canvas.getBoardHitBounds(added).y < canvas.getBoardHitBounds(replacement).y);
         assertNull(canvas.getBoardHitBounds(removed));
+    }
+
+    @Test
+    public void horizontalPanelCandidatesUseBottomSlots() {
+        BoardLocation left = boardAt("Left", 0, 0);
+        BoardLocation right = boardAt("Right", 40, 5);
+
+        List<OperatorRuntimeCanvas.PanelSlot> slots = new OperatorRuntimeCanvas()
+                .getPanelSlots(jobWith(left, right));
+
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_LEFT, left);
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT, right);
+    }
+
+    @Test
+    public void verticalPanelCandidatesUseLeftSlots() {
+        BoardLocation bottom = boardAt("Bottom", 0, 0);
+        BoardLocation top = boardAt("Top", 5, 40);
+
+        List<OperatorRuntimeCanvas.PanelSlot> slots = new OperatorRuntimeCanvas()
+                .getPanelSlots(jobWith(bottom, top));
+
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_LEFT, bottom);
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.TOP_LEFT, top);
+    }
+
+    @Test
+    public void rectangularPanelCandidatesUseAllFourSlots() {
+        BoardLocation bottomLeft = boardAt("Bottom Left", 0, 0);
+        BoardLocation bottomRight = boardAt("Bottom Right", 40, 3);
+        BoardLocation topLeft = boardAt("Top Left", 2, 40);
+        BoardLocation topRight = boardAt("Top Right", 42, 43);
+
+        List<OperatorRuntimeCanvas.PanelSlot> slots = new OperatorRuntimeCanvas()
+                .getPanelSlots(jobWith(bottomLeft, bottomRight, topLeft, topRight));
+
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_LEFT, bottomLeft);
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT, bottomRight);
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.TOP_LEFT, topLeft);
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.TOP_RIGHT, topRight);
+    }
+
+    @Test
+    public void runtimeGlobalLocationsDoNotChangePanelSlots() {
+        BoardLocation left = boardAt("Left", 0, 0);
+        BoardLocation right = boardAt("Right", 40, 5);
+        Job job = jobWith(left, right);
+        OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
+        canvas.setJob(job);
+
+        left.setGlobalLocation(new Location(LengthUnit.Millimeters, 100, 100, 0, 0));
+        right.setGlobalLocation(new Location(LengthUnit.Millimeters, -100, -100, 0, 0));
+        List<OperatorRuntimeCanvas.PanelSlot> slots = canvas.getPanelSlots(job);
+
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_LEFT, left);
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT, right);
+    }
+
+    private static void assertSlot(List<OperatorRuntimeCanvas.PanelSlot> slots,
+            OperatorRuntimeCanvas.PanelQuadrant quadrant, PlacementsHolderLocation<?> expected) {
+        OperatorRuntimeCanvas.PanelSlot slot = slots.stream()
+                .filter(candidate -> candidate.quadrant == quadrant)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertSame(expected, slot.location);
     }
 
     private static Job jobWith(BoardLocation... boards) {

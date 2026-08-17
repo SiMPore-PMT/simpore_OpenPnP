@@ -117,6 +117,7 @@ public class OperatorPanel extends JPanel {
     private final JCheckBox placementFilter = new JCheckBox("Pick-and-place", true);
     private final JCheckBox dispenseFilter = new JCheckBox("Dispense", true);
     private final JCheckBox fiducialFilter = new JCheckBox("Fiducials", true);
+    private final JToolBar editingToolBar = createEditingToolbar();
     private final JLabel titleLabel = new JLabel("Operator Runtime");
     private final JLabel jobLabel = new JLabel("No job loaded");
     private final JLabel statusLabel = new JLabel("Machine status unavailable");
@@ -154,16 +155,17 @@ public class OperatorPanel extends JPanel {
             return;
         }
         Component clicked = (Component) event.getSource();
-        if (shouldDismissHighlight(clicked, canvas, moveCameraButton)) {
+        if (shouldDismissHighlight(clicked, canvas, moveCameraButton, editingToolBar)) {
             canvas.clearHighlightSelection();
             updateButtons();
         }
     };
 
     static boolean shouldDismissHighlight(Component clicked, Component canvas,
-            Component moveCameraControl) {
+            Component moveCameraControl, Component editingControls) {
         return !SwingUtilities.isDescendingFrom(clicked, canvas)
-                && !SwingUtilities.isDescendingFrom(clicked, moveCameraControl);
+                && !SwingUtilities.isDescendingFrom(clicked, moveCameraControl)
+                && !SwingUtilities.isDescendingFrom(clicked, editingControls);
     }
 
     public OperatorPanel(MainFrame mainFrame, JobPanel jobPanel) {
@@ -308,7 +310,7 @@ public class OperatorPanel extends JPanel {
         jobControlsPanel.add(primaryToolBar, BorderLayout.WEST);
         jobControlsPanel.add(secondaryToolBar, BorderLayout.EAST);
         panel.add(jobControlsPanel, BorderLayout.NORTH);
-        panel.add(createEditingToolbar(), BorderLayout.CENTER);
+        panel.add(editingToolBar, BorderLayout.CENTER);
         return panel;
     }
 
@@ -632,6 +634,7 @@ public class OperatorPanel extends JPanel {
     private void resetCurrentJob(boolean resetTrayProgress) {
         try {
             editingService.resetJob(jobPanel.getJob(), resetTrayProgress);
+            resetGlobalDispenseToggle();
             selectedBoards.clear();
             canvas.clearSelection();
             refreshAndPersistView(false);
@@ -648,6 +651,7 @@ public class OperatorPanel extends JPanel {
         }
         try {
             editingService.resetBoardsOnly(jobPanel.getJob());
+            resetGlobalDispenseToggle();
             refreshAndPersistView(false);
         }
         catch (Exception e) {
@@ -1102,6 +1106,11 @@ public class OperatorPanel extends JPanel {
     private void updateDispenseToggleIcon() {
         globalDispenseToggle.setIcon(globalDispenseToggle.isSelected() ? Icons.centerPin : new SlashedIcon(Icons.centerPin));
         globalDispenseToggle.setText(globalDispenseToggle.isSelected() ? "Dispense On" : "Dispense Off");
+    }
+
+    private void resetGlobalDispenseToggle() {
+        globalDispenseToggle.setSelected(true);
+        updateDispenseToggleIcon();
     }
 
     private void repaintRuntime() {

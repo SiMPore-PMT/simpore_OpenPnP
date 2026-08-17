@@ -1,9 +1,11 @@
 package org.openpnp.gui.operator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.BorderLayout;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Rectangle;
 
@@ -13,27 +15,49 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTable;
+import javax.swing.JToolBar;
 import javax.swing.table.DefaultTableModel;
 
 import org.junit.jupiter.api.Test;
 
 public class OperatorPanelTest {
     @Test
-    public void moveCameraClickPreservesCanvasHighlight() {
+    public void editingToolbarClicksPreserveCanvasHighlight() {
         JPanel root = new JPanel();
         JPanel canvas = new JPanel();
         JButton moveCamera = new JButton();
         JLabel moveCameraChild = new JLabel();
         moveCamera.add(moveCameraChild);
+        JToolBar editingToolbar = new JToolBar();
+        JButton resetBoards = new JButton("Reset Boards");
+        JButton dispense = new JButton("Dispense");
+        JButton edit = new JButton("Edit");
+        JButton boards = new JButton("Boards");
+        JButton placements = new JButton("Placements");
+        JButton pickAndPlace = new JButton("Pick-and-place");
+        JButton dispenseFilter = new JButton("Dispense filter");
+        JButton fiducials = new JButton("Fiducials");
+        JPanel nestedToolbarChild = new JPanel();
+        JLabel nestedLabel = new JLabel();
+        nestedToolbarChild.add(nestedLabel);
+        for (Component control : new Component[] { resetBoards, dispense, moveCamera, edit,
+                boards, placements, pickAndPlace, dispenseFilter, fiducials, nestedToolbarChild }) {
+            editingToolbar.add(control);
+        }
         JButton unrelatedControl = new JButton();
         root.add(canvas);
-        root.add(moveCamera);
+        root.add(editingToolbar);
         root.add(unrelatedControl);
 
-        assertTrue(!OperatorPanel.shouldDismissHighlight(canvas, canvas, moveCamera));
-        assertTrue(!OperatorPanel.shouldDismissHighlight(moveCamera, canvas, moveCamera));
-        assertTrue(!OperatorPanel.shouldDismissHighlight(moveCameraChild, canvas, moveCamera));
-        assertTrue(OperatorPanel.shouldDismissHighlight(unrelatedControl, canvas, moveCamera));
+        assertFalse(OperatorPanel.shouldDismissHighlight(canvas, canvas, moveCamera, editingToolbar));
+        assertFalse(OperatorPanel.shouldDismissHighlight(moveCamera, canvas, moveCamera, editingToolbar));
+        assertFalse(OperatorPanel.shouldDismissHighlight(moveCameraChild, canvas, moveCamera, editingToolbar));
+        assertFalse(OperatorPanel.shouldDismissHighlight(editingToolbar, canvas, moveCamera, editingToolbar));
+        for (Component control : editingToolbar.getComponents()) {
+            assertFalse(OperatorPanel.shouldDismissHighlight(control, canvas, moveCamera, editingToolbar));
+        }
+        assertFalse(OperatorPanel.shouldDismissHighlight(nestedLabel, canvas, moveCamera, editingToolbar));
+        assertTrue(OperatorPanel.shouldDismissHighlight(unrelatedControl, canvas, moveCamera, editingToolbar));
     }
 
     @Test
