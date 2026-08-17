@@ -109,6 +109,37 @@ public class OperatorRuntimeCanvasTest {
         canvas.clearHighlightSelection();
         assertNull(canvas.getSelectedPocketTarget());
         assertEquals(1, selectionChanges[0]);
+
+        PanelJob fixture = panelJob(new File(com.google.common.io.Files.createTempDir(), "operator.job"),
+                "left-panel", "left-board", "right-panel", "right-board");
+        canvas.setBounds(0, 0, 900, 600);
+        canvas.setJob(fixture.job);
+        canvas.selectPanelQuadrantForTest(OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT);
+        canvas.selectBoardTarget(fixture.rightBoard);
+        assertTrue(canvas.getSelectedBoards().contains(fixture.rightBoard));
+        assertEquals(2, selectionChanges[0]);
+
+        canvas.clearHighlightSelection();
+
+        assertEquals(OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT, canvas.getSelectedPanelQuadrant());
+        assertTrue(canvas.getSelectedBoards().isEmpty());
+        assertNull(canvas.getSelectedPocketTarget());
+        assertEquals(2, selectionChanges[0]);
+        paint(canvas);
+        assertTrue(canvas.getBoardHitBounds(fixture.rightBoard) != null);
+        assertNull(canvas.getBoardHitBounds(fixture.leftBoard));
+
+        canvas.selectBoardTarget(fixture.rightBoard);
+        assertEquals(3, selectionChanges[0]);
+        canvas.clearSelection();
+
+        assertEquals(OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT, canvas.getSelectedPanelQuadrant());
+        assertTrue(canvas.getSelectedBoards().isEmpty());
+        assertNull(canvas.getSelectedPocketTarget());
+        assertEquals(3, selectionChanges[0]);
+        paint(canvas);
+        assertTrue(canvas.getBoardHitBounds(fixture.rightBoard) != null);
+        assertNull(canvas.getBoardHitBounds(fixture.leftBoard));
     }
 
     @Test

@@ -369,11 +369,10 @@ public class OperatorRuntimeCanvas extends JPanel {
         clearHighlightSelection();
     }
 
-    /** Clears transient canvas highlights without changing the board inspector. */
+    /** Clears transient canvas highlights without changing the board inspector or active panel. */
     public void clearHighlightSelection() {
         selectedBoards.clear();
         selectedPocketTarget = null;
-        selectedPanelQuadrant = null;
         dragRectangle = null;
         repaint();
     }
