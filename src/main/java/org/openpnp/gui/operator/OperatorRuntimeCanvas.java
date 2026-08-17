@@ -28,6 +28,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import javax.swing.JPanel;
 import javax.swing.UIManager;
@@ -217,6 +218,14 @@ public class OperatorRuntimeCanvas extends JPanel {
         return new LinkedHashSet<>(selectedBoards);
     }
 
+    PanelQuadrant getSelectedPanelQuadrant() {
+        return selectedPanelQuadrant;
+    }
+
+    void selectPanelQuadrantForTest(PanelQuadrant quadrant) {
+        selectPanelQuadrant(quadrant);
+    }
+
     Rectangle getBoardHitBounds(PlacementsHolderLocation<?> boardLocation) {
         for (BoardHit hit : boardHits) {
             if (hit.boardLocation == boardLocation) {
@@ -236,16 +245,43 @@ public class OperatorRuntimeCanvas extends JPanel {
     }
 
     public void setJob(Job job) {
+        Job previousJob = this.job;
+        Set<String> selectedBoardIds = selectedBoards.stream()
+                .map(PlacementsHolderLocation::getUniqueId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
         Object newIdentity = logicalJobIdentity(job);
         boolean differentJob = !sameLogicalJob(layoutJobIdentity, newIdentity);
-        if (this.job != job || differentJob) {
+
+        this.job = job;
+        if (differentJob) {
             selectedBoards.clear();
             selectedPanelQuadrant = null;
             selectedPocketTarget = null;
-            this.job = job;
         }
+        else if (previousJob != job) {
+            selectedBoards.clear();
+            if (job != null) {
+                restoreSelectedLocationsById(job.getRootPanelLocation(), selectedBoardIds);
+            }
+        }
+
         synchronizeLayoutSnapshot(differentJob);
         repaint();
+    }
+
+    private void restoreSelectedLocationsById(PlacementsHolderLocation<?> location,
+            Set<String> selectedIds) {
+        if (location == null) {
+            return;
+        }
+        if (selectedIds.contains(location.getUniqueId())) {
+            selectedBoards.add(location);
+        }
+        if (location instanceof PanelLocation) {
+            for (PlacementsHolderLocation<?> child : ((PanelLocation) location).getChildren()) {
+                restoreSelectedLocationsById(child, selectedIds);
+            }
+        }
     }
 
     /** Explicitly establishes the currently loaded job design as a new layout. */
