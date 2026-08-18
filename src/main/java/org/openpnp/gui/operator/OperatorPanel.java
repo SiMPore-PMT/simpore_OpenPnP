@@ -155,17 +155,30 @@ public class OperatorPanel extends JPanel {
             return;
         }
         Component clicked = (Component) event.getSource();
-        if (shouldDismissHighlight(clicked, canvas, moveCameraButton, editingToolBar)) {
+        if (shouldDismissHighlight(clicked, canvas, moveCameraButton,
+                editingToolBar, detailsPanel)) {
             canvas.clearHighlightSelection();
             updateButtons();
         }
     };
 
+    static boolean isWithin(Component clicked, Component control) {
+        return control != null && SwingUtilities.isDescendingFrom(clicked, control);
+    }
+
+    static boolean isPopupMenuInteraction(Component clicked) {
+        return clicked instanceof JPopupMenu
+                || SwingUtilities.getAncestorOfClass(JPopupMenu.class, clicked) != null;
+    }
+
     static boolean shouldDismissHighlight(Component clicked, Component canvas,
-            Component moveCameraControl, Component editingControls) {
-        return !SwingUtilities.isDescendingFrom(clicked, canvas)
-                && !SwingUtilities.isDescendingFrom(clicked, moveCameraControl)
-                && !SwingUtilities.isDescendingFrom(clicked, editingControls);
+            Component moveCameraControl, Component editingControls,
+            Component boardInspector) {
+        return !isWithin(clicked, canvas)
+                && !isWithin(clicked, moveCameraControl)
+                && !isWithin(clicked, editingControls)
+                && !isWithin(clicked, boardInspector)
+                && !isPopupMenuInteraction(clicked);
     }
 
     public OperatorPanel(MainFrame mainFrame, JobPanel jobPanel) {

@@ -11,7 +11,9 @@ import java.awt.Rectangle;
 
 import javax.swing.JLabel;
 import javax.swing.JButton;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTable;
@@ -22,13 +24,13 @@ import org.junit.jupiter.api.Test;
 
 public class OperatorPanelTest {
     @Test
-    public void editingToolbarClicksPreserveCanvasHighlight() {
+    public void selectionDependentEditControlsPreserveCanvasHighlight() {
         JPanel root = new JPanel();
         JPanel canvas = new JPanel();
         JButton moveCamera = new JButton();
         JLabel moveCameraChild = new JLabel();
         moveCamera.add(moveCameraChild);
-        JToolBar editingToolbar = new JToolBar();
+        JToolBar editingToolBar = new JToolBar();
         JButton resetBoards = new JButton("Reset Boards");
         JButton dispense = new JButton("Dispense");
         JButton edit = new JButton("Edit");
@@ -40,24 +42,51 @@ public class OperatorPanelTest {
         JPanel nestedToolbarChild = new JPanel();
         JLabel nestedLabel = new JLabel();
         nestedToolbarChild.add(nestedLabel);
-        for (Component control : new Component[] { resetBoards, dispense, moveCamera, edit,
+        for (Component control : new Component[] { resetBoards, dispense, edit,
                 boards, placements, pickAndPlace, dispenseFilter, fiducials, nestedToolbarChild }) {
-            editingToolbar.add(control);
+            editingToolBar.add(control);
         }
+        JPanel detailsPanel = new JPanel(new BorderLayout());
+        JTable placementDetailsTable = new JTable();
+        JScrollPane placementDetailsScrollPane = new JScrollPane(placementDetailsTable);
+        JLabel detailsChild = new JLabel();
+        detailsPanel.add(placementDetailsScrollPane, BorderLayout.CENTER);
+        detailsPanel.add(detailsChild, BorderLayout.SOUTH);
         JButton unrelatedControl = new JButton();
         root.add(canvas);
-        root.add(editingToolbar);
+        root.add(moveCamera);
+        root.add(editingToolBar);
+        root.add(detailsPanel);
         root.add(unrelatedControl);
 
-        assertFalse(OperatorPanel.shouldDismissHighlight(canvas, canvas, moveCamera, editingToolbar));
-        assertFalse(OperatorPanel.shouldDismissHighlight(moveCamera, canvas, moveCamera, editingToolbar));
-        assertFalse(OperatorPanel.shouldDismissHighlight(moveCameraChild, canvas, moveCamera, editingToolbar));
-        assertFalse(OperatorPanel.shouldDismissHighlight(editingToolbar, canvas, moveCamera, editingToolbar));
-        for (Component control : editingToolbar.getComponents()) {
-            assertFalse(OperatorPanel.shouldDismissHighlight(control, canvas, moveCamera, editingToolbar));
+        assertFalse(OperatorPanel.shouldDismissHighlight(canvas, canvas, moveCamera, editingToolBar, detailsPanel));
+        assertFalse(OperatorPanel.shouldDismissHighlight(moveCamera, canvas, moveCamera, editingToolBar, detailsPanel));
+        assertFalse(OperatorPanel.shouldDismissHighlight(moveCameraChild, canvas, moveCamera, editingToolBar, detailsPanel));
+        assertFalse(OperatorPanel.shouldDismissHighlight(editingToolBar, canvas, moveCamera, editingToolBar, detailsPanel));
+        for (Component control : editingToolBar.getComponents()) {
+            assertFalse(OperatorPanel.shouldDismissHighlight(control, canvas, moveCamera, editingToolBar, detailsPanel));
         }
-        assertFalse(OperatorPanel.shouldDismissHighlight(nestedLabel, canvas, moveCamera, editingToolbar));
-        assertTrue(OperatorPanel.shouldDismissHighlight(unrelatedControl, canvas, moveCamera, editingToolbar));
+        assertFalse(OperatorPanel.shouldDismissHighlight(nestedLabel, canvas, moveCamera, editingToolBar, detailsPanel));
+        assertFalse(OperatorPanel.shouldDismissHighlight(detailsPanel, canvas, moveCamera, editingToolBar, detailsPanel));
+        assertFalse(OperatorPanel.shouldDismissHighlight(placementDetailsScrollPane,
+                canvas, moveCamera, editingToolBar, detailsPanel));
+        assertFalse(OperatorPanel.shouldDismissHighlight(placementDetailsScrollPane.getViewport(),
+                canvas, moveCamera, editingToolBar, detailsPanel));
+        assertFalse(OperatorPanel.shouldDismissHighlight(placementDetailsTable,
+                canvas, moveCamera, editingToolBar, detailsPanel));
+        assertFalse(OperatorPanel.shouldDismissHighlight(detailsChild,
+                canvas, moveCamera, editingToolBar, detailsPanel));
+
+        JPopupMenu popup = new JPopupMenu();
+        JMenuItem enableItem = new JMenuItem("Enable");
+        popup.add(enableItem);
+        assertFalse(OperatorPanel.shouldDismissHighlight(popup,
+                canvas, moveCamera, editingToolBar, detailsPanel));
+        assertFalse(OperatorPanel.shouldDismissHighlight(enableItem,
+                canvas, moveCamera, editingToolBar, detailsPanel));
+
+        assertTrue(OperatorPanel.shouldDismissHighlight(unrelatedControl,
+                canvas, moveCamera, editingToolBar, detailsPanel));
     }
 
     @Test
