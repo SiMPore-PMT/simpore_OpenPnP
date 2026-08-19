@@ -11,6 +11,7 @@ import java.awt.Rectangle;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.List;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeAll;
@@ -108,6 +109,37 @@ public class OperatorRuntimeCanvasTest {
         canvas.clearHighlightSelection();
         assertNull(canvas.getSelectedPocketTarget());
         assertEquals(1, selectionChanges[0]);
+
+        PanelJob fixture = panelJob(new File(com.google.common.io.Files.createTempDir(), "operator.job"),
+                "left-panel", "left-board", "right-panel", "right-board");
+        canvas.setBounds(0, 0, 900, 600);
+        canvas.setJob(fixture.job);
+        canvas.selectPanelQuadrantForTest(OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT);
+        canvas.selectBoardTarget(fixture.rightBoard);
+        assertTrue(canvas.getSelectedBoards().contains(fixture.rightBoard));
+        assertEquals(2, selectionChanges[0]);
+
+        canvas.clearHighlightSelection();
+
+        assertEquals(OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT, canvas.getSelectedPanelQuadrant());
+        assertTrue(canvas.getSelectedBoards().isEmpty());
+        assertNull(canvas.getSelectedPocketTarget());
+        assertEquals(2, selectionChanges[0]);
+        paint(canvas);
+        assertTrue(canvas.getBoardHitBounds(fixture.rightBoard) != null);
+        assertNull(canvas.getBoardHitBounds(fixture.leftBoard));
+
+        canvas.selectBoardTarget(fixture.rightBoard);
+        assertEquals(3, selectionChanges[0]);
+        canvas.clearSelection();
+
+        assertEquals(OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT, canvas.getSelectedPanelQuadrant());
+        assertTrue(canvas.getSelectedBoards().isEmpty());
+        assertNull(canvas.getSelectedPocketTarget());
+        assertEquals(3, selectionChanges[0]);
+        paint(canvas);
+        assertTrue(canvas.getBoardHitBounds(fixture.rightBoard) != null);
+        assertNull(canvas.getBoardHitBounds(fixture.leftBoard));
     }
 
     @Test
@@ -302,12 +334,193 @@ public class OperatorRuntimeCanvasTest {
         assertNull(canvas.getBoardHitBounds(removed));
     }
 
+    @Test
+    public void horizontalPanelCandidatesUseBottomSlots() {
+        BoardLocation left = boardAt("Left", 0, 0);
+        BoardLocation right = boardAt("Right", 40, 5);
+
+        List<OperatorRuntimeCanvas.PanelSlot> slots = new OperatorRuntimeCanvas()
+                .getPanelSlots(jobWith(left, right));
+
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_LEFT, left);
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT, right);
+    }
+
+    @Test
+    public void verticalPanelCandidatesUseLeftSlots() {
+        BoardLocation bottom = boardAt("Bottom", 0, 0);
+        BoardLocation top = boardAt("Top", 5, 40);
+
+        List<OperatorRuntimeCanvas.PanelSlot> slots = new OperatorRuntimeCanvas()
+                .getPanelSlots(jobWith(bottom, top));
+
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_LEFT, bottom);
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.TOP_LEFT, top);
+    }
+
+    @Test
+    public void rectangularPanelCandidatesUseAllFourSlots() {
+        BoardLocation bottomLeft = boardAt("Bottom Left", 0, 0);
+        BoardLocation bottomRight = boardAt("Bottom Right", 40, 3);
+        BoardLocation topLeft = boardAt("Top Left", 2, 40);
+        BoardLocation topRight = boardAt("Top Right", 42, 43);
+
+        List<OperatorRuntimeCanvas.PanelSlot> slots = new OperatorRuntimeCanvas()
+                .getPanelSlots(jobWith(bottomLeft, bottomRight, topLeft, topRight));
+
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_LEFT, bottomLeft);
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT, bottomRight);
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.TOP_LEFT, topLeft);
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.TOP_RIGHT, topRight);
+    }
+
+    @Test
+    public void runtimeGlobalLocationsDoNotChangePanelSlots() {
+        BoardLocation left = boardAt("Left", 0, 0);
+        BoardLocation right = boardAt("Right", 40, 5);
+        Job job = jobWith(left, right);
+        OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
+        canvas.setJob(job);
+
+        left.setGlobalLocation(new Location(LengthUnit.Millimeters, 100, 100, 0, 0));
+        right.setGlobalLocation(new Location(LengthUnit.Millimeters, -100, -100, 0, 0));
+        List<OperatorRuntimeCanvas.PanelSlot> slots = canvas.getPanelSlots(job);
+
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_LEFT, left);
+        assertSlot(slots, OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT, right);
+    }
+
+    @Test
+    public void sameLogicalJobReloadPreservesPanelAndRebindsBoardSelection() {
+        File jobFile = new File(com.google.common.io.Files.createTempDir(), "operator.job");
+        PanelJob first = panelJob(jobFile, "left-panel", "left-board", "right-panel", "right-board");
+        PanelJob replacement = panelJob(jobFile, "left-panel", "left-board", "right-panel", "right-board");
+        OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
+        canvas.setBounds(0, 0, 900, 600);
+        canvas.setJob(first.job);
+        canvas.selectPanelQuadrantForTest(OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT);
+        canvas.selectBoardTarget(first.rightBoard);
+
+        canvas.setJob(replacement.job);
+
+        assertEquals(OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT, canvas.getSelectedPanelQuadrant());
+        assertTrue(canvas.getSelectedBoards().contains(replacement.rightBoard));
+        assertTrue(!canvas.getSelectedBoards().contains(first.rightBoard));
+        paint(canvas);
+        assertTrue(canvas.getBoardHitBounds(replacement.rightBoard) != null);
+    }
+
+    @Test
+    public void sameJobObjectRefreshKeepsPanelAndBoardSelection() {
+        File jobFile = new File(com.google.common.io.Files.createTempDir(), "operator.job");
+        PanelJob fixture = panelJob(jobFile, "left-panel", "left-board", "right-panel", "right-board");
+        OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
+        canvas.setJob(fixture.job);
+        canvas.selectPanelQuadrantForTest(OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT);
+        canvas.selectBoardTarget(fixture.rightBoard);
+
+        canvas.setJob(fixture.job);
+
+        assertEquals(OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT, canvas.getSelectedPanelQuadrant());
+        assertTrue(canvas.getSelectedBoards().contains(fixture.rightBoard));
+    }
+
+    @Test
+    public void differentLogicalJobClearsPanelAndFallsBackOnPaint() {
+        File directory = com.google.common.io.Files.createTempDir();
+        PanelJob first = panelJob(new File(directory, "first.job"),
+                "left-panel", "left-board", "right-panel", "right-board");
+        PanelJob replacement = panelJob(new File(directory, "second.job"),
+                "new-left-panel", "new-left-board", "new-right-panel", "new-right-board");
+        OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
+        canvas.setBounds(0, 0, 900, 600);
+        canvas.setJob(first.job);
+        canvas.selectPanelQuadrantForTest(OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT);
+        canvas.selectBoardTarget(first.rightBoard);
+
+        canvas.setJob(replacement.job);
+
+        assertNull(canvas.getSelectedPanelQuadrant());
+        assertTrue(canvas.getSelectedBoards().isEmpty());
+        paint(canvas);
+        assertEquals(OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_LEFT, canvas.getSelectedPanelQuadrant());
+        assertTrue(canvas.getBoardHitBounds(replacement.leftBoard) != null);
+        assertNull(canvas.getBoardHitBounds(replacement.rightBoard));
+    }
+
+    @Test
+    public void sameLogicalJobRebindingDoesNotEmitSelectionCallback() {
+        File jobFile = new File(com.google.common.io.Files.createTempDir(), "operator.job");
+        PanelJob first = panelJob(jobFile, "left-panel", "left-board", "right-panel", "right-board");
+        PanelJob replacement = panelJob(jobFile, "left-panel", "left-board", "right-panel", "right-board");
+        OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
+        final int[] selectionChanges = { 0 };
+        canvas.setListener(new NoOpListener() {
+            @Override
+            public void boardSelectionChanged(Set<PlacementsHolderLocation<?>> selection) {
+                selectionChanges[0]++;
+            }
+        });
+        canvas.setJob(first.job);
+        canvas.selectPanelQuadrantForTest(OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT);
+        canvas.selectBoardTarget(first.rightBoard);
+        int changesBeforeReload = selectionChanges[0];
+
+        canvas.setJob(replacement.job);
+
+        assertEquals(changesBeforeReload, selectionChanges[0]);
+        assertTrue(canvas.getSelectedBoards().contains(replacement.rightBoard));
+    }
+
+    private static void assertSlot(List<OperatorRuntimeCanvas.PanelSlot> slots,
+            OperatorRuntimeCanvas.PanelQuadrant quadrant, PlacementsHolderLocation<?> expected) {
+        OperatorRuntimeCanvas.PanelSlot slot = slots.stream()
+                .filter(candidate -> candidate.quadrant == quadrant)
+                .findFirst().orElseThrow(AssertionError::new);
+        assertSame(expected, slot.location);
+    }
+
     private static Job jobWith(BoardLocation... boards) {
         Job job = new Job();
         for (BoardLocation board : boards) {
             job.getRootPanelLocation().getPanel().addChild(board);
         }
         return job;
+    }
+
+    private static PanelJob panelJob(File file, String leftPanelId, String leftBoardId,
+            String rightPanelId, String rightBoardId) {
+        Job job = new Job();
+        job.setFile(file);
+        PanelLocation leftPanel = panelAt(leftPanelId, 0, 0, leftBoardId);
+        PanelLocation rightPanel = panelAt(rightPanelId, 40, 5, rightBoardId);
+        job.getRootPanelLocation().getPanel().addChild(leftPanel);
+        job.getRootPanelLocation().getPanel().addChild(rightPanel);
+        return new PanelJob(job, (BoardLocation) leftPanel.getChildren().get(0),
+                (BoardLocation) rightPanel.getChildren().get(0));
+    }
+
+    private static PanelLocation panelAt(String panelId, double x, double y, String boardId) {
+        Panel panel = new Panel();
+        PanelLocation panelLocation = new PanelLocation(panel);
+        panelLocation.setId(panelId);
+        panelLocation.setLocation(new Location(LengthUnit.Millimeters, x, y, 0, 0));
+        BoardLocation board = boardAt(boardId, 0, 0);
+        board.setId(boardId);
+        panel.addChild(board);
+        return panelLocation;
+    }
+
+    private static class PanelJob {
+        final Job job;
+        final BoardLocation leftBoard;
+        final BoardLocation rightBoard;
+
+        PanelJob(Job job, BoardLocation leftBoard, BoardLocation rightBoard) {
+            this.job = job;
+            this.leftBoard = leftBoard;
+            this.rightBoard = rightBoard;
+        }
     }
 
     private static BoardLocation boardAt(String id, double x, double y) {
