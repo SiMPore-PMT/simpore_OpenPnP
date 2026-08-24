@@ -43,6 +43,7 @@ import java.awt.KeyEventDispatcher;
 import java.awt.KeyboardFocusManager;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
+import java.io.File;
 import java.lang.reflect.Method;
 import java.security.InvalidParameterException;
 import java.util.HashMap;
@@ -266,6 +267,8 @@ public class MainFrame extends JFrame {
     private JPanel panel_2;
     private ScheduledExecutorService scheduledExecutor;
     private JMenuBar menuBar;
+    private JMenuItem mnNewJob;
+    private JMenuItem mnSaveConfiguration;
     private JMenu mnImport;
     private JMenu mnScripts;
     private JMenu mnWindows;
@@ -333,6 +336,14 @@ public class MainFrame extends JFrame {
 
     private void updateAccessLevelMenus() {
         boolean admin = accessLevel == AccessLevel.ADMINISTRATOR;
+        if (mnNewJob != null) {
+            mnNewJob.setVisible(admin);
+            mnNewJob.setEnabled(admin);
+        }
+        if (mnSaveConfiguration != null) {
+            mnSaveConfiguration.setVisible(admin);
+            mnSaveConfiguration.setEnabled(admin);
+        }
         if (mnImport != null) {
             mnImport.setVisible(admin);
             if (!admin) {
@@ -341,6 +352,12 @@ public class MainFrame extends JFrame {
         }
         if (mnWindows != null) {
             mnWindows.setVisible(admin);
+        }
+        if (scriptFileWatcher != null) {
+            scriptFileWatcher.setOpenScriptsDirectoryVisible(admin);
+            File scriptsDirectory = configuration.getScripting().getScriptsDirectory();
+            scriptFileWatcher.setScriptsDirectory(admin ? scriptsDirectory
+                    : new File(scriptsDirectory, "Operator Scripts")); //$NON-NLS-1$
         }
     }
 
@@ -435,7 +452,8 @@ public class MainFrame extends JFrame {
         mnFile.setMnemonic(KeyEvent.VK_F);
         menuBar.add(mnFile);
 
-        mnFile.add(new JMenuItem(jobPanel.newJobAction));
+        mnNewJob = new JMenuItem(jobPanel.newJobAction);
+        mnFile.add(mnNewJob);
         mnFile.add(new JMenuItem(jobPanel.openJobAction));
 
         mnFile.add(jobPanel.mnOpenRecent);
@@ -446,7 +464,8 @@ public class MainFrame extends JFrame {
         mnFile.add(new JMenuItem(jobPanel.saveJobAction));
         mnFile.add(new JMenuItem(jobPanel.saveJobAsAction));
         mnFile.addSeparator();
-        mnFile.add(new JMenuItem(saveConfigAction));
+        mnSaveConfiguration = new JMenuItem(saveConfigAction);
+        mnFile.add(mnSaveConfiguration);
 
 
         // File -> Import
@@ -898,6 +917,7 @@ public class MainFrame extends JFrame {
 	            configuration.load();
 	            scriptFileWatcher = new ScriptFileWatcher(configuration.getScripting());
 	            scriptFileWatcher.setMenu(mnScripts);
+	            updateAccessLevelMenus();
 	            
 	            if (Configuration.get().getMachine().getProperty("Welcome2_0_Dialog_Shown") == null) {
 	                Welcome2_0Dialog dialog = new Welcome2_0Dialog(this);
