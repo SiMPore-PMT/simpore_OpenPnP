@@ -268,6 +268,7 @@ public class MainFrame extends JFrame {
     private ScheduledExecutorService scheduledExecutor;
     private JMenuBar menuBar;
     private JMenuItem mnNewJob;
+    private JMenuItem mnSaveConfiguration;
     private JMenu mnImport;
     private JMenu mnScripts;
     private JMenu mnWindows;
@@ -338,6 +339,10 @@ public class MainFrame extends JFrame {
         if (mnNewJob != null) {
             mnNewJob.setVisible(admin);
             mnNewJob.setEnabled(admin);
+        }
+        if (mnSaveConfiguration != null) {
+            mnSaveConfiguration.setVisible(admin);
+            mnSaveConfiguration.setEnabled(admin);
         }
         if (mnImport != null) {
             mnImport.setVisible(admin);
@@ -458,7 +463,8 @@ public class MainFrame extends JFrame {
         mnFile.add(new JMenuItem(jobPanel.saveJobAction));
         mnFile.add(new JMenuItem(jobPanel.saveJobAsAction));
         mnFile.addSeparator();
-        mnFile.add(new JMenuItem(saveConfigAction));
+        mnSaveConfiguration = new JMenuItem(saveConfigAction);
+        mnFile.add(mnSaveConfiguration);
 
 
         // File -> Import
