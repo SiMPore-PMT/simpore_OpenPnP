@@ -267,6 +267,7 @@ public class MainFrame extends JFrame {
     private JPanel panel_2;
     private ScheduledExecutorService scheduledExecutor;
     private JMenuBar menuBar;
+    private JMenuItem mnNewJob;
     private JMenu mnImport;
     private JMenu mnScripts;
     private JMenu mnWindows;
@@ -334,6 +335,10 @@ public class MainFrame extends JFrame {
 
     private void updateAccessLevelMenus() {
         boolean admin = accessLevel == AccessLevel.ADMINISTRATOR;
+        if (mnNewJob != null) {
+            mnNewJob.setVisible(admin);
+            mnNewJob.setEnabled(admin);
+        }
         if (mnImport != null) {
             mnImport.setVisible(admin);
             if (!admin) {
@@ -441,7 +446,8 @@ public class MainFrame extends JFrame {
         mnFile.setMnemonic(KeyEvent.VK_F);
         menuBar.add(mnFile);
 
-        mnFile.add(new JMenuItem(jobPanel.newJobAction));
+        mnNewJob = new JMenuItem(jobPanel.newJobAction);
+        mnFile.add(mnNewJob);
         mnFile.add(new JMenuItem(jobPanel.openJobAction));
 
         mnFile.add(jobPanel.mnOpenRecent);
