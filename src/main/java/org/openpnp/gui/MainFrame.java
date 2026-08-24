@@ -43,6 +43,7 @@ import java.awt.KeyEventDispatcher;
 import java.awt.KeyboardFocusManager;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
+import java.io.File;
 import java.lang.reflect.Method;
 import java.security.InvalidParameterException;
 import java.util.HashMap;
@@ -341,6 +342,11 @@ public class MainFrame extends JFrame {
         }
         if (mnWindows != null) {
             mnWindows.setVisible(admin);
+        }
+        if (scriptFileWatcher != null) {
+            File scriptsDirectory = configuration.getScripting().getScriptsDirectory();
+            scriptFileWatcher.setScriptsDirectory(admin ? scriptsDirectory
+                    : new File(scriptsDirectory, "Operator Scripts")); //$NON-NLS-1$
         }
     }
 
@@ -898,6 +904,7 @@ public class MainFrame extends JFrame {
 	            configuration.load();
 	            scriptFileWatcher = new ScriptFileWatcher(configuration.getScripting());
 	            scriptFileWatcher.setMenu(mnScripts);
+	            updateAccessLevelMenus();
 	            
 	            if (Configuration.get().getMachine().getProperty("Welcome2_0_Dialog_Shown") == null) {
 	                Welcome2_0Dialog dialog = new Welcome2_0Dialog(this);
