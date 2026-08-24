@@ -354,6 +354,7 @@ public class MainFrame extends JFrame {
             mnWindows.setVisible(admin);
         }
         if (scriptFileWatcher != null) {
+            scriptFileWatcher.setOpenScriptsDirectoryVisible(admin);
             File scriptsDirectory = configuration.getScripting().getScriptsDirectory();
             scriptFileWatcher.setScriptsDirectory(admin ? scriptsDirectory
                     : new File(scriptsDirectory, "Operator Scripts")); //$NON-NLS-1$

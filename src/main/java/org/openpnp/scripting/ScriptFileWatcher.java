@@ -26,6 +26,7 @@ public class ScriptFileWatcher {
     private File scriptsDirectory;
 
     JMenu menu;
+    private JMenuItem openScriptsDirectoryMenuItem;
     WatchService fileWatcher;
     private final Set<Path> watchedDirectories = new HashSet<>();
 
@@ -93,7 +94,8 @@ public class ScriptFileWatcher {
                 synchronizeMenu(menu, scriptsDirectory);
             }
         });
-        menu.add(new AbstractAction(Translations.getString("Scripting.Action.OpenScriptsDirectory")) { //$NON-NLS-1$
+        openScriptsDirectoryMenuItem = menu.add(new AbstractAction(
+                Translations.getString("Scripting.Action.OpenScriptsDirectory")) { //$NON-NLS-1$
             {
                 putValue(MNEMONIC_KEY, KeyEvent.VK_O);
             }
@@ -135,6 +137,13 @@ public class ScriptFileWatcher {
 
         // Synchronize the menu
         synchronizeMenu(menu, scriptsDirectory);
+    }
+
+    public void setOpenScriptsDirectoryVisible(boolean visible) {
+        if (openScriptsDirectoryMenuItem != null) {
+            openScriptsDirectoryMenuItem.setVisible(visible);
+            openScriptsDirectoryMenuItem.setEnabled(visible);
+        }
     }
 
     /**
