@@ -799,6 +799,11 @@ public class OperatorPanel extends JPanel {
                 OperatorPanel.this.showPlacementContextMenu(invoker, x, y, selection);
             }
             @Override
+            public void showPanelContextMenu(Component invoker, int x, int y,
+                    PanelLocation panelLocation) {
+                OperatorPanel.this.showPanelContextMenu(invoker, x, y, panelLocation);
+            }
+            @Override
             public void showTrayPocketContextMenu(Component invoker, int x, int y, JEDEC_TrayFeeder feeder,
                     int feedIndexBase0, int displayPosition) {
                 OperatorPanel.this.showTrayPocketContextMenu(invoker, x, y, feeder, displayPosition);
@@ -840,6 +845,40 @@ public class OperatorPanel extends JPanel {
         menu.add(enable);
         menu.add(disable);
         menu.show(invoker, x, y);
+    }
+
+    private void showPanelContextMenu(Component invoker, int x, int y,
+            PanelLocation panelLocation) {
+        JPopupMenu menu = createPanelContextMenu(panelLocation,
+                enabled -> setPanelEnabled(panelLocation, enabled));
+        menu.show(invoker, x, y);
+    }
+
+    static JPopupMenu createPanelContextMenu(PanelLocation panelLocation,
+            java.util.function.Consumer<Boolean> enabledHandler) {
+        JPopupMenu menu = new JPopupMenu();
+        JMenuItem enable = new JMenuItem("Enable", Icons.pinEnabled);
+        JMenuItem disable = new JMenuItem("Disable", Icons.pinDisabled);
+        boolean enabled = panelLocation.isEnabled();
+        enable.setEnabled(!enabled);
+        disable.setEnabled(enabled);
+        enable.addActionListener(e -> enabledHandler.accept(true));
+        disable.addActionListener(e -> enabledHandler.accept(false));
+        menu.add(enable);
+        menu.add(disable);
+        return menu;
+    }
+
+    private void setPanelEnabled(PanelLocation panelLocation, boolean enabled) {
+        try {
+            editingService.setPanelEnabled(jobPanel.getJob(), panelLocation, enabled);
+            refreshAndPersistView(false);
+            updateButtons();
+            repaintRuntime();
+        }
+        catch (Exception e) {
+            showEditError(e);
+        }
     }
 
     private void showPlacementContextMenu(Component invoker, int x, int y, Set<PlacementsHolderLocation<?>> selection) {

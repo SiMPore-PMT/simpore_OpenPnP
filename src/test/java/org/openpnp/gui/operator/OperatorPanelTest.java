@@ -8,6 +8,8 @@ import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Rectangle;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.swing.JLabel;
 import javax.swing.JButton;
@@ -21,8 +23,34 @@ import javax.swing.JToolBar;
 import javax.swing.table.DefaultTableModel;
 
 import org.junit.jupiter.api.Test;
+import org.openpnp.model.Panel;
+import org.openpnp.model.PanelLocation;
 
 public class OperatorPanelTest {
+    @Test
+    public void panelContextMenuEnablesOnlyStateChangingActionAndDelegatesRequestedState() {
+        PanelLocation panel = new PanelLocation(new Panel());
+        List<Boolean> requestedStates = new ArrayList<>();
+
+        panel.setEnabled(true);
+        JPopupMenu enabledMenu = OperatorPanel.createPanelContextMenu(panel, requestedStates::add);
+        JMenuItem enable = (JMenuItem) enabledMenu.getComponent(0);
+        JMenuItem disable = (JMenuItem) enabledMenu.getComponent(1);
+        assertFalse(enable.isEnabled());
+        assertTrue(disable.isEnabled());
+        disable.doClick();
+        assertEquals(List.of(false), requestedStates);
+
+        panel.setEnabled(false);
+        JPopupMenu disabledMenu = OperatorPanel.createPanelContextMenu(panel, requestedStates::add);
+        enable = (JMenuItem) disabledMenu.getComponent(0);
+        disable = (JMenuItem) disabledMenu.getComponent(1);
+        assertTrue(enable.isEnabled());
+        assertFalse(disable.isEnabled());
+        enable.doClick();
+        assertEquals(List.of(false, true), requestedStates);
+    }
+
     @Test
     public void selectionDependentEditControlsPreserveCanvasHighlight() {
         JPanel root = new JPanel();

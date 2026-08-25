@@ -1,6 +1,7 @@
 package org.openpnp.gui.operator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -82,6 +83,73 @@ public class OperatorRuntimeCanvasTest {
         canvas.dispatchEvent(new MouseEvent(canvas, MouseEvent.MOUSE_PRESSED, 0,
                 MouseEvent.BUTTON3_DOWN_MASK, 1, 1, 1, true, MouseEvent.BUTTON3));
         assertEquals(4, canvas.getSelectedPocketTarget().getFeedIndexBase0());
+    }
+
+    @Test
+    public void panelCardStylesDistinguishEnabledDisabledSelectedAndEmptySlots() {
+        OperatorRuntimeCanvas.PanelCardStyle enabled =
+                OperatorRuntimeCanvas.panelCardStyle(true, true, false);
+        OperatorRuntimeCanvas.PanelCardStyle disabled =
+                OperatorRuntimeCanvas.panelCardStyle(true, false, false);
+        OperatorRuntimeCanvas.PanelCardStyle selectedDisabled =
+                OperatorRuntimeCanvas.panelCardStyle(true, false, true);
+        OperatorRuntimeCanvas.PanelCardStyle empty =
+                OperatorRuntimeCanvas.panelCardStyle(false, false, false);
+
+        assertFalse(enabled.background.equals(disabled.background));
+        assertFalse(enabled.text.equals(disabled.text));
+        assertFalse(disabled.background.equals(selectedDisabled.background));
+        assertFalse(disabled.border.equals(selectedDisabled.border));
+        assertEquals(empty.background,
+                OperatorRuntimeCanvas.panelCardStyle(false, true, false).background);
+        assertEquals(empty.border,
+                OperatorRuntimeCanvas.panelCardStyle(false, true, false).border);
+        assertEquals(empty.text,
+                OperatorRuntimeCanvas.panelCardStyle(false, true, false).text);
+    }
+
+    @Test
+    public void panelPopupTargetsBottomRightWithoutRequiringEditModeAndIgnoresEmptySlots() {
+        PanelJob fixture = panelJob(new File(com.google.common.io.Files.createTempDir(), "operator.job"),
+                "left-panel", "left-board", "right-panel", "right-board");
+        OperatorRuntimeCanvas canvas = new OperatorRuntimeCanvas();
+        final PanelLocation[] popupTarget = { null };
+        final int[] popupCount = { 0 };
+        canvas.setListener(new NoOpListener() {
+            @Override public void showPanelContextMenu(Component invoker, int x, int y,
+                    PanelLocation panelLocation) {
+                popupTarget[0] = panelLocation;
+                popupCount[0]++;
+            }
+        });
+        canvas.setBounds(0, 0, 900, 600);
+        canvas.setJob(fixture.job);
+        canvas.setEditMode(OperatorRuntimeCanvas.EditMode.NONE);
+        canvas.setEditingAllowed(false);
+        paint(canvas);
+
+        Rectangle bottomRight = canvas.getPanelQuadrantHitBounds(
+                OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT);
+        popup(canvas, bottomRight);
+        assertSame(fixture.rightBoard.getParent(), popupTarget[0]);
+        assertEquals(OperatorRuntimeCanvas.PanelQuadrant.BOTTOM_RIGHT,
+                canvas.getSelectedPanelQuadrant());
+        assertEquals(1, popupCount[0]);
+
+        OperatorRuntimeCanvas.LayoutGeometry geometry = OperatorRuntimeCanvas.calculateLayoutGeometry(
+                canvas.getWidth(), canvas.getHeight(), 1, 1, true);
+        int emptyTopRightX = geometry.panelSelectorCard.x + 11 + 48 + 6 + 24;
+        int emptyTopRightY = geometry.panelSelectorCard.y + 5 + 12;
+        canvas.dispatchEvent(new MouseEvent(canvas, MouseEvent.MOUSE_PRESSED, 0,
+                MouseEvent.BUTTON3_DOWN_MASK, emptyTopRightX, emptyTopRightY, 1, true,
+                MouseEvent.BUTTON3));
+        assertEquals(1, popupCount[0]);
+    }
+
+    private static void popup(OperatorRuntimeCanvas canvas, Rectangle bounds) {
+        canvas.dispatchEvent(new MouseEvent(canvas, MouseEvent.MOUSE_PRESSED, 0,
+                MouseEvent.BUTTON3_DOWN_MASK, (int) bounds.getCenterX(), (int) bounds.getCenterY(),
+                1, true, MouseEvent.BUTTON3));
     }
 
     @Test
@@ -545,6 +613,8 @@ public class OperatorRuntimeCanvasTest {
                 Set<PlacementsHolderLocation<?>> selection) { }
         @Override public void showPlacementContextMenu(Component invoker, int x, int y,
                 Set<PlacementsHolderLocation<?>> selection) { }
+        @Override public void showPanelContextMenu(Component invoker, int x, int y,
+                PanelLocation panelLocation) { }
         @Override public void showTrayPocketContextMenu(Component invoker, int x, int y,
                 JEDEC_TrayFeeder feeder, int feedIndexBase0, int displayPosition) { }
         @Override public void resetTray(JEDEC_TrayFeeder feeder) { }
