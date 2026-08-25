@@ -800,8 +800,8 @@ public class OperatorPanel extends JPanel {
             }
             @Override
             public void showPanelContextMenu(Component invoker, int x, int y,
-                    PanelLocation panelLocation) {
-                OperatorPanel.this.showPanelContextMenu(invoker, x, y, panelLocation);
+                    Set<PanelLocation> panelLocations) {
+                OperatorPanel.this.showPanelContextMenu(invoker, x, y, panelLocations);
             }
             @Override
             public void showTrayPocketContextMenu(Component invoker, int x, int y, JEDEC_TrayFeeder feeder,
@@ -848,20 +848,19 @@ public class OperatorPanel extends JPanel {
     }
 
     private void showPanelContextMenu(Component invoker, int x, int y,
-            PanelLocation panelLocation) {
-        JPopupMenu menu = createPanelContextMenu(panelLocation,
-                enabled -> setPanelEnabled(panelLocation, enabled));
+            Set<PanelLocation> panelLocations) {
+        JPopupMenu menu = createPanelContextMenu(panelLocations,
+                enabled -> setPanelsEnabled(panelLocations, enabled));
         menu.show(invoker, x, y);
     }
 
-    static JPopupMenu createPanelContextMenu(PanelLocation panelLocation,
+    static JPopupMenu createPanelContextMenu(Set<PanelLocation> panelLocations,
             java.util.function.Consumer<Boolean> enabledHandler) {
         JPopupMenu menu = new JPopupMenu();
         JMenuItem enable = new JMenuItem("Enable", Icons.pinEnabled);
         JMenuItem disable = new JMenuItem("Disable", Icons.pinDisabled);
-        boolean enabled = panelLocation.isEnabled();
-        enable.setEnabled(!enabled);
-        disable.setEnabled(enabled);
+        enable.setEnabled(panelLocations.stream().anyMatch(panel -> !panel.isEnabled()));
+        disable.setEnabled(panelLocations.stream().anyMatch(PanelLocation::isEnabled));
         enable.addActionListener(e -> enabledHandler.accept(true));
         disable.addActionListener(e -> enabledHandler.accept(false));
         menu.add(enable);
@@ -869,9 +868,11 @@ public class OperatorPanel extends JPanel {
         return menu;
     }
 
-    private void setPanelEnabled(PanelLocation panelLocation, boolean enabled) {
+    private void setPanelsEnabled(Set<PanelLocation> panelLocations, boolean enabled) {
         try {
-            editingService.setPanelEnabled(jobPanel.getJob(), panelLocation, enabled);
+            for (PanelLocation panelLocation : panelLocations) {
+                editingService.setPanelEnabled(jobPanel.getJob(), panelLocation, enabled);
+            }
             refreshAndPersistView(false);
             updateButtons();
             repaintRuntime();

@@ -10,6 +10,7 @@ import java.awt.Dimension;
 import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import javax.swing.JLabel;
 import javax.swing.JButton;
@@ -33,7 +34,7 @@ public class OperatorPanelTest {
         List<Boolean> requestedStates = new ArrayList<>();
 
         panel.setEnabled(true);
-        JPopupMenu enabledMenu = OperatorPanel.createPanelContextMenu(panel, requestedStates::add);
+        JPopupMenu enabledMenu = OperatorPanel.createPanelContextMenu(Set.of(panel), requestedStates::add);
         JMenuItem enable = (JMenuItem) enabledMenu.getComponent(0);
         JMenuItem disable = (JMenuItem) enabledMenu.getComponent(1);
         assertFalse(enable.isEnabled());
@@ -42,13 +43,27 @@ public class OperatorPanelTest {
         assertEquals(List.of(false), requestedStates);
 
         panel.setEnabled(false);
-        JPopupMenu disabledMenu = OperatorPanel.createPanelContextMenu(panel, requestedStates::add);
+        JPopupMenu disabledMenu = OperatorPanel.createPanelContextMenu(Set.of(panel), requestedStates::add);
         enable = (JMenuItem) disabledMenu.getComponent(0);
         disable = (JMenuItem) disabledMenu.getComponent(1);
         assertTrue(enable.isEnabled());
         assertFalse(disable.isEnabled());
         enable.doClick();
         assertEquals(List.of(false, true), requestedStates);
+    }
+
+    @Test
+    public void mixedPanelContextMenuAllowsEitherBulkStateChange() {
+        PanelLocation enabledPanel = new PanelLocation(new Panel());
+        PanelLocation disabledPanel = new PanelLocation(new Panel());
+        enabledPanel.setEnabled(true);
+        disabledPanel.setEnabled(false);
+
+        JPopupMenu menu = OperatorPanel.createPanelContextMenu(
+                Set.of(enabledPanel, disabledPanel), ignored -> { });
+
+        assertTrue(menu.getComponent(0).isEnabled());
+        assertTrue(menu.getComponent(1).isEnabled());
     }
 
     @Test

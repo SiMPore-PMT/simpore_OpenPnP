@@ -58,7 +58,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         void boardSelectionChanged(Set<PlacementsHolderLocation<?>> selection);
         void showBoardContextMenu(Component invoker, int x, int y, Set<PlacementsHolderLocation<?>> selection);
         void showPlacementContextMenu(Component invoker, int x, int y, Set<PlacementsHolderLocation<?>> selection);
-        void showPanelContextMenu(Component invoker, int x, int y, PanelLocation panelLocation);
+        void showPanelContextMenu(Component invoker, int x, int y, Set<PanelLocation> panelLocations);
         void showTrayPocketContextMenu(Component invoker, int x, int y, JEDEC_TrayFeeder feeder,
                 int feedIndexBase0, int displayPosition);
         void resetTray(JEDEC_TrayFeeder feeder);
@@ -105,6 +105,7 @@ public class OperatorRuntimeCanvas extends JPanel {
     private final List<TrayActionHit> trayActionHits = new ArrayList<>();
     private final List<PanelQuadrantHit> panelQuadrantHits = new ArrayList<>();
     private PanelQuadrant selectedPanelQuadrant;
+    private final Set<PanelQuadrant> selectedPanelQuadrants = new LinkedHashSet<>();
     private CameraTarget selectedPocketTarget;
     private Rectangle dragRectangle;
     private int dragStartX;
@@ -127,7 +128,7 @@ public class OperatorRuntimeCanvas extends JPanel {
                 PanelQuadrantHit quadrantHit = findPanelQuadrant(e.getX(), e.getY());
                 if (quadrantHit != null) {
                     pressHandledByCanvasControl = true;
-                    selectPanelQuadrant(quadrantHit.slot.quadrant);
+                    selectPanelQuadrant(quadrantHit.slot.quadrant, isMenuShortcutDown(e));
                     return;
                 }
                 TrayActionHit actionHit = findTrayAction(e.getX(), e.getY());
@@ -226,8 +227,12 @@ public class OperatorRuntimeCanvas extends JPanel {
         return selectedPanelQuadrant;
     }
 
+    Set<PanelQuadrant> getSelectedPanelQuadrants() {
+        return new LinkedHashSet<>(selectedPanelQuadrants);
+    }
+
     void selectPanelQuadrantForTest(PanelQuadrant quadrant) {
-        selectPanelQuadrant(quadrant);
+        selectPanelQuadrant(quadrant, false);
     }
 
     Rectangle getBoardHitBounds(PlacementsHolderLocation<?> boardLocation) {
@@ -269,6 +274,7 @@ public class OperatorRuntimeCanvas extends JPanel {
         if (differentJob) {
             selectedBoards.clear();
             selectedPanelQuadrant = null;
+            selectedPanelQuadrants.clear();
             selectedPocketTarget = null;
         }
         else if (previousJob != job) {
@@ -834,7 +840,7 @@ public class OperatorRuntimeCanvas extends JPanel {
             boolean populated = slot.location != null;
             boolean enabled = populated && slot.location.isEnabled();
             PanelCardStyle style = panelCardStyle(populated, enabled,
-                    slot.quadrant == selectedPanelQuadrant);
+                    selectedPanelQuadrants.contains(slot.quadrant));
             g2.setColor(style.background);
             g2.fillRoundRect(cell.x, cell.y, cell.width, cell.height, 8, 8);
             g2.setColor(style.border);
@@ -958,6 +964,8 @@ public class OperatorRuntimeCanvas extends JPanel {
         }
         if (fallback != null && selectedPanelQuadrant != fallback.quadrant) {
             selectedPanelQuadrant = fallback.quadrant;
+            selectedPanelQuadrants.clear();
+            selectedPanelQuadrants.add(fallback.quadrant);
         }
         return fallback;
     }
@@ -988,9 +996,26 @@ public class OperatorRuntimeCanvas extends JPanel {
         return dx + dy;
     }
 
-    private void selectPanelQuadrant(PanelQuadrant quadrant) {
+    private void selectPanelQuadrant(PanelQuadrant quadrant, boolean extendSelection) {
         clearPocketSelection();
-        selectedPanelQuadrant = quadrant;
+        if (!extendSelection) {
+            selectedPanelQuadrants.clear();
+        }
+        if (extendSelection && selectedPanelQuadrants.contains(quadrant)) {
+            // Keep at least one panel selected so the job layout always has an active panel.
+            if (selectedPanelQuadrants.size() > 1) {
+                selectedPanelQuadrants.remove(quadrant);
+                selectedPanelQuadrant = selectedPanelQuadrants.iterator().next();
+            }
+        }
+        else {
+            selectedPanelQuadrants.add(quadrant);
+            selectedPanelQuadrant = quadrant;
+        }
+        notifyPanelSelectionChanged();
+    }
+
+    private void notifyPanelSelectionChanged() {
         selectedBoards.clear();
         dragRectangle = null;
         if (listener != null) {
@@ -1054,10 +1079,19 @@ public class OperatorRuntimeCanvas extends JPanel {
     private void showPopup(MouseEvent e) {
         PanelQuadrantHit panel = findPanelQuadrant(e.getX(), e.getY());
         if (panel != null) {
-            selectPanelQuadrant(panel.slot.quadrant);
-            if (listener != null && panel.slot.location instanceof PanelLocation) {
-                listener.showPanelContextMenu(this, e.getX(), e.getY(),
-                        (PanelLocation) panel.slot.location);
+            boolean extendSelection = isMenuShortcutDown(e);
+            if (!selectedPanelQuadrants.contains(panel.slot.quadrant)) {
+                selectPanelQuadrant(panel.slot.quadrant, extendSelection);
+            }
+            else {
+                selectedPanelQuadrant = panel.slot.quadrant;
+                notifyPanelSelectionChanged();
+            }
+            if (listener != null) {
+                Set<PanelLocation> panels = getSelectedPanelLocations();
+                if (!panels.isEmpty()) {
+                    listener.showPanelContextMenu(this, e.getX(), e.getY(), panels);
+                }
             }
             return;
         }
@@ -1083,6 +1117,17 @@ public class OperatorRuntimeCanvas extends JPanel {
         else if (editMode == EditMode.PLACEMENT) {
             listener.showPlacementContextMenu(this, e.getX(), e.getY(), getSelectedBoards());
         }
+    }
+
+    private Set<PanelLocation> getSelectedPanelLocations() {
+        Set<PanelLocation> panels = new LinkedHashSet<>();
+        for (PanelQuadrantHit hit : panelQuadrantHits) {
+            if (selectedPanelQuadrants.contains(hit.slot.quadrant)
+                    && hit.slot.location instanceof PanelLocation) {
+                panels.add((PanelLocation) hit.slot.location);
+            }
+        }
+        return panels;
     }
 
     private boolean isSelectedPocket(JEDEC_TrayFeeder feeder, int index) {
