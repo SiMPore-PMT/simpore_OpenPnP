@@ -13,6 +13,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.io.File;
 import java.nio.file.FileSystems;
+import java.nio.file.Path;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
@@ -22,12 +23,16 @@ import java.util.stream.Collectors;
 
 public class ScriptFileWatcher {
     private final Scripting scripting;
+    private File scriptsDirectory;
 
     JMenu menu;
+    private JMenuItem openScriptsDirectoryMenuItem;
     WatchService fileWatcher;
+    private final Set<Path> watchedDirectories = new HashSet<>();
 
     public ScriptFileWatcher(Scripting scripting) {
         this.scripting = scripting;
+        scriptsDirectory = scripting.getScriptsDirectory();
 
         copyExampleScripts();
     }
@@ -86,10 +91,11 @@ public class ScriptFileWatcher {
 
             @Override
             public void actionPerformed(ActionEvent e) {
-                synchronizeMenu(menu, scripting.getScriptsDirectory());
+                synchronizeMenu(menu, scriptsDirectory);
             }
         });
-        menu.add(new AbstractAction(Translations.getString("Scripting.Action.OpenScriptsDirectory")) { //$NON-NLS-1$
+        openScriptsDirectoryMenuItem = menu.add(new AbstractAction(
+                Translations.getString("Scripting.Action.OpenScriptsDirectory")) { //$NON-NLS-1$
             {
                 putValue(MNEMONIC_KEY, KeyEvent.VK_O);
             }
@@ -98,7 +104,7 @@ public class ScriptFileWatcher {
             public void actionPerformed(ActionEvent e) {
                 UiUtils.messageBoxOnException(() -> {
                     if (Desktop.isDesktopSupported()) {
-                        Desktop.getDesktop().open(scripting.getScriptsDirectory());
+                        Desktop.getDesktop().open(scriptsDirectory);
                     }
                 });
             }
@@ -130,14 +136,41 @@ public class ScriptFileWatcher {
         menu.add(btnClearPool);
 
         // Synchronize the menu
-        synchronizeMenu(menu, scripting.getScriptsDirectory());
+        synchronizeMenu(menu, scriptsDirectory);
+    }
+
+    public void setOpenScriptsDirectoryVisible(boolean visible) {
+        if (openScriptsDirectoryMenuItem != null) {
+            openScriptsDirectoryMenuItem.setVisible(visible);
+            openScriptsDirectoryMenuItem.setEnabled(visible);
+        }
+    }
+
+    /**
+     * Changes the directory represented by the scripts menu. The configured scripts directory is
+     * still used by default, while restricted users can be presented with a dedicated subtree.
+     */
+    public synchronized void setScriptsDirectory(File scriptsDirectory) {
+        if (Objects.equals(this.scriptsDirectory, scriptsDirectory)) {
+            return;
+        }
+        this.scriptsDirectory = scriptsDirectory;
+        if (menu != null) {
+            for (JMenuItem item : getScriptMenuItems(menu)) {
+                menu.remove(item);
+            }
+        }
+        if (scriptsDirectory != null && scriptsDirectory.isDirectory()) {
+            watchDirectory(scriptsDirectory);
+        }
+        synchronizeMenu(menu, scriptsDirectory);
     }
 
     private void setupFileWatcher() {
         // Add a file watcher so that we can be notified if any scripts change
         try {
             fileWatcher = FileSystems.getDefault().newWatchService();
-            watchDirectory(scripting.getScriptsDirectory());
+            watchDirectory(scriptsDirectory);
             Thread thread = new Thread(() -> {
                 for (;;) {
                     try {
@@ -146,7 +179,8 @@ public class ScriptFileWatcher {
                         key.pollEvents();
                         key.reset();
                         // rescan
-                        synchronizeMenu(menu, scripting.getScriptsDirectory());
+                        watchDirectory(scriptsDirectory);
+                        synchronizeMenu(menu, scriptsDirectory);
                     }
                     catch (Exception e) {
                         e.printStackTrace();
@@ -162,21 +196,31 @@ public class ScriptFileWatcher {
     }
 
     private void watchDirectory(File directory) {
+        if (fileWatcher == null || directory == null || !directory.isDirectory()) {
+            return;
+        }
+        Path path = directory.toPath();
+        if (!watchedDirectories.add(path)) {
+            return;
+        }
         try {
-            directory.toPath().register(fileWatcher, StandardWatchEventKinds.ENTRY_CREATE,
+            path.register(fileWatcher, StandardWatchEventKinds.ENTRY_CREATE,
                     StandardWatchEventKinds.ENTRY_DELETE, StandardWatchEventKinds.ENTRY_MODIFY);
         }
         catch (Exception e) {
+            watchedDirectories.remove(path);
             e.printStackTrace();
         }
     }
 
     private synchronized void synchronizeMenu(JMenu menu, File directory) {
-        if (menu == null) {
+        if (menu == null || directory == null || !directory.isDirectory()) {
             return;
         }
         // Remove any menu items that don't have a matching entry in the directory
-        Set<String> filenames = new HashSet<>(Arrays.asList(directory.list()));
+        String[] directoryEntries = directory.list();
+        Set<String> filenames = directoryEntries == null ? Collections.emptySet()
+                : new HashSet<>(Arrays.asList(directoryEntries));
         for (JMenuItem item : getScriptMenuItems(menu)) {
             if (!filenames.contains(item.getText())) {
                 menu.remove(item);

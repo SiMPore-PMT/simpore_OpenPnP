@@ -125,7 +125,7 @@ import com.google.common.eventbus.Subscribe;
 
 @SuppressWarnings("serial")  //$NON-NLS-1$
 public class JobPanel extends JPanel {
-    enum State {
+    public enum State {
         Stopped,
         Paused,
         Running,
@@ -513,11 +513,17 @@ public class JobPanel extends JPanel {
     }
     
     void setState(State newState) {
+        State oldState = this.state;
         this.state = newState;
         synchronized (scriptPauseLock) {
             scriptPauseLock.notifyAll();
         }
         updateJobActions();
+        firePropertyChange("state", oldState.name(), newState.name());
+    }
+
+    public State getState() {
+        return state;
     }
     
     public String getJobState() {
@@ -655,6 +661,10 @@ public class JobPanel extends JPanel {
             }
         }
         updateRecentJobsMenu();
+    }
+
+    public File getMostRecentJobFile() {
+        return recentJobs.isEmpty() ? null : recentJobs.get(0);
     }
 
     private void saveRecentJobs() {
@@ -1785,11 +1795,17 @@ public class JobPanel extends JPanel {
      * @param file job to load
      * @throws Exception
      */
+    public void loadJob(File file) throws Exception {
+        loadJobExec(file);
+    }
+
     private void loadJobExec(File file) throws Exception {
         Job job = configuration.loadJob(file);
         setJob(job);
         addRecentJob(file);
-        mainFrame.getFeedersTab().updateView();
+        if (mainFrame.getFeedersTab() != null) {
+            mainFrame.getFeedersTab().updateView();
+        }
     }
 
     private final MachineListener machineListener = new MachineListener.Adapter() {
