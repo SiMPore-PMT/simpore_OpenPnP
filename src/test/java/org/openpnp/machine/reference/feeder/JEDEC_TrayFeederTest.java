@@ -207,9 +207,15 @@ public class JEDEC_TrayFeederTest {
                             return 480;
                         default:
                             Class<?> returnType = method.getReturnType();
-                            if (returnType == boolean.class) return false;
-                            if (returnType == int.class) return 0;
-                            if (returnType == double.class) return 0.0;
+                            if (returnType == boolean.class) {
+                                return false;
+                            }
+                            if (returnType == int.class) {
+                                return 0;
+                            }
+                            if (returnType == double.class) {
+                                return 0.0;
+                            }
                             return null;
                     }
                 });
