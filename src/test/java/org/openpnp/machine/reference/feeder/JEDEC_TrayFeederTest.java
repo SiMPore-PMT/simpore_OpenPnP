@@ -3,8 +3,13 @@ package org.openpnp.machine.reference.feeder;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.lang.reflect.Proxy;
+import java.nio.file.Path;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.openpnp.model.Configuration;
+import org.openpnp.machine.reference.ReferenceMachine;
 import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder.FirstRasterDirection;
 import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder.GridIndex;
 import org.openpnp.machine.reference.feeder.JEDEC_TrayFeeder.RasterPattern;
@@ -19,6 +24,15 @@ import org.openpnp.spi.Nozzle;
 import org.openpnp.util.VisionUtils;
 
 public class JEDEC_TrayFeederTest {
+    @TempDir
+    public Path configurationDirectory;
+
+    @BeforeEach
+    public void initializeConfiguration() {
+        Configuration.initialize(configurationDirectory.toFile());
+        Configuration.get().setMachine(new ReferenceMachine());
+    }
+
     @Test
     public void partFiducialIsTheDefaultAndTogglingPreservesExplicitSelection() {
         JEDEC_TrayFeeder feeder = new JEDEC_TrayFeeder();

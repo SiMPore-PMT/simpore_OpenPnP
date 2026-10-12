@@ -7,8 +7,10 @@ import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.opencv.core.CvType;
@@ -57,6 +59,9 @@ public class CvPipeline implements AutoCloseable {
     private ArrayList<CvStage> stages = new ArrayList<>();
 
     private Map<CvStage, Result> results = new HashMap<CvStage, Result>();
+
+    private final Set<Mat> ownedResultModels =
+            Collections.newSetFromMap(new IdentityHashMap<Mat, Boolean>());
 
     private Map<String, Object> properties = new HashMap<String, Object>();
 
@@ -231,6 +236,22 @@ public class CvPipeline implements AutoCloseable {
     public Object getWorkingModel() {
       return workingModel;
     }
+
+    /**
+     * Transfer ownership of a native {@link Mat} result model to this pipeline. The pipeline keeps
+     * the Mat valid for downstream stages and releases it with the other processing results. A
+     * stage must register only Mats that it created and no longer owns.
+     *
+     * @param model the result model whose ownership is transferred
+     * @return the same model, for convenient use in a {@link Result}
+     */
+    public synchronized Mat ownResultModel(Mat model) {
+        if (model == null) {
+            throw new IllegalArgumentException("Owned result model must not be null.");
+        }
+        ownedResultModels.add(model);
+        return model;
+    }
     
     public ColorSpace getWorkingColorSpace() {
         return workingColorSpace;
@@ -256,7 +277,7 @@ public class CvPipeline implements AutoCloseable {
       this.totalProcessingTimeNs = totalProcessingTimeNs;
     }
 
-    public void process() throws Exception {
+    public synchronized void process() throws Exception {
         terminalException = null;
         totalProcessingTimeNs = 0;
         release();
@@ -313,7 +334,8 @@ public class CvPipeline implements AutoCloseable {
             // Replace the working image with the result image.
             // Clone the result image for storage.
             else {
-                if (workingImage != null && workingImage != image) {
+                if (workingImage != null && workingImage != image
+                        && !ownedResultModels.contains(workingImage)) {
                     workingImage.release();
                 }
                 workingImage = image;
@@ -329,6 +351,10 @@ public class CvPipeline implements AutoCloseable {
             }
 
             results.put(stage, new Result(image, colorSpace, model, processingTimeNs, stage));
+            if (terminalException != null) {
+                // Preserve the failing result for the debugger, but never execute downstream actions.
+                break;
+            }
         }
         if (terminalException != null) {
             throw (terminalException);
@@ -350,22 +376,33 @@ public class CvPipeline implements AutoCloseable {
      * called when the pipeline is no longer needed. This is primarily to release retained native
      * resources from OpenCV.
      */
-    public void release() {
+    public synchronized void release() {
+        Set<Mat> released = Collections.newSetFromMap(new IdentityHashMap<Mat, Boolean>());
         if (workingImage != null) {
-            workingImage.release();
+            releaseOnce(workingImage, released);
             workingImage = null;
         }
         for (Result result : results.values()) {
             if (result.image != null) {
-                result.image.release();
+                releaseOnce(result.image, released);
             }
         }
+        for (Mat model : ownedResultModels) {
+            releaseOnce(model, released);
+        }
+        ownedResultModels.clear();
         workingModel = null;
         results.clear();
     }
+
+    private static void releaseOnce(Mat mat, Set<Mat> released) {
+        if (released.add(mat)) {
+            mat.release();
+        }
+    }
     
     @Override
-    public void close() throws IOException {
+    public synchronized void close() throws IOException {
         release();
     }
     
@@ -381,7 +418,7 @@ public class CvPipeline implements AutoCloseable {
      * @return
      * @throws Exception
      */
-    public String toXmlString() throws Exception {
+    public synchronized String toXmlString() throws Exception {
         resetToDefaults();
         Serializer ser = createSerializer();
         StringWriter sw = new StringWriter();
@@ -395,7 +432,7 @@ public class CvPipeline implements AutoCloseable {
      * @param s
      * @throws Exception
      */
-    public void fromXmlString(String s) throws Exception {
+    public synchronized void fromXmlString(String s) throws Exception {
         release();
         Serializer ser = createSerializer();
         StringReader sr = new StringReader(s);

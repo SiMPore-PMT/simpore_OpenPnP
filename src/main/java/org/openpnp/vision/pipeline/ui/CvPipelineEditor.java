@@ -1,14 +1,21 @@
 package org.openpnp.vision.pipeline.ui;
 
 import java.awt.BorderLayout;
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.event.HierarchyEvent;
 import java.awt.event.HierarchyListener;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 
 import javax.swing.JPanel;
 import javax.swing.JSplitPane;
+import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
 
 import org.openpnp.util.UiUtils;
 import org.openpnp.vision.pipeline.CvPipeline;
@@ -20,6 +27,7 @@ import org.openpnp.vision.pipeline.stages.AffineWarp;
 import org.openpnp.vision.pipeline.stages.BlurGaussian;
 import org.openpnp.vision.pipeline.stages.BlurMedian;
 import org.openpnp.vision.pipeline.stages.ClosestModel;
+import org.openpnp.vision.pipeline.stages.CNN;
 import org.openpnp.vision.pipeline.stages.ComposeResult;
 import org.openpnp.vision.pipeline.stages.ConvertColor;
 import org.openpnp.vision.pipeline.stages.ConvertModelToKeyPoints;
@@ -107,6 +115,7 @@ public class CvPipelineEditor extends JPanel {
         registerStageClass(BlurMedian.class);
         registerStageClass(BlurGaussian.class);
         registerStageClass(ClosestModel.class);
+        registerStageClass(CNN.class);
         registerStageClass(Add.class);
         registerStageClass(ComposeResult.class);
         registerStageClass(ConvertColor.class);
@@ -180,6 +189,7 @@ public class CvPipelineEditor extends JPanel {
     private final CvPipeline pipeline;
     private PipelinePanel pipelinePanel;
     private ResultsPanel resultsPanel;
+    private SwingWorker<Void, Void> processingWorker;
     
     private String originalVersion = "";
 
@@ -222,8 +232,55 @@ public class CvPipelineEditor extends JPanel {
     }
 
     public void process() {
-        UiUtils.messageBoxOnException(() -> getPipeline().process());
-        resultsPanel.refresh();
+        boolean usesCnn = pipeline.getStages().stream()
+                .anyMatch(stage -> stage.isEnabled() && stage instanceof CNN);
+        if (!usesCnn || !SwingUtilities.isEventDispatchThread()) {
+            UiUtils.messageBoxOnException(() -> getPipeline().process());
+            resultsPanel.refresh();
+            return;
+        }
+        if (processingWorker != null) {
+            return;
+        }
+        Map<Component, Boolean> enabledStates = new IdentityHashMap<>();
+        disableDuringProcessing(this, enabledStates);
+        processingWorker = new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                pipeline.process();
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    get();
+                }
+                catch (ExecutionException e) {
+                    UiUtils.showError(e.getCause());
+                }
+                catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    UiUtils.showError(e);
+                }
+                finally {
+                    enabledStates.forEach(Component::setEnabled);
+                    processingWorker = null;
+                    resultsPanel.refresh();
+                }
+            }
+        };
+        processingWorker.execute();
+    }
+
+    private static void disableDuringProcessing(Component component, Map<Component, Boolean> states) {
+        states.put(component, component.isEnabled());
+        component.setEnabled(false);
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getComponents()) {
+                disableDuringProcessing(child, states);
+            }
+        }
     }
 
     public void stageSelected(CvStage stage) {
