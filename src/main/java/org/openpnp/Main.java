@@ -26,6 +26,8 @@ import java.util.Locale;
 import javax.swing.ToolTipManager;
 import javax.swing.UIManager;
 
+import org.openpnp.gui.AccessLevel;
+import org.openpnp.gui.AccessLevelLoginDialog;
 import org.openpnp.gui.MainFrame;
 import org.openpnp.gui.components.ThemeDialog;
 import org.openpnp.gui.components.ThemeInfo;
@@ -193,7 +195,8 @@ public class Main {
         EventQueue.invokeLater(new Runnable() {
             public void run() {
                 try {
-                    MainFrame frame = new MainFrame(configuration);
+                    AccessLevel accessLevel = AccessLevelLoginDialog.showDialog(null);
+                    MainFrame frame = new MainFrame(configuration, accessLevel);
                     frame.setVisible(true);
                     Logger.info(String.format("Bienvenue, Bienvenido, Willkommen, Hello, Namaskar, Welkom, Bonjour to OpenPnP version %s.", Main.getVersion()));
                     configuration.getScripting().on("Startup", null);

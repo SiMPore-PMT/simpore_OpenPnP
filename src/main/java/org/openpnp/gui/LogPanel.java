@@ -162,13 +162,15 @@ public class LogPanel extends JPanel {
             }
         }, 0, 500, TimeUnit.MILLISECONDS);
 
-        MainFrame.get().getTabs().addChangeListener(new ChangeListener() {
+        if (MainFrame.get() != null && MainFrame.get().getTabs() != null) {
+            MainFrame.get().getTabs().addChangeListener(new ChangeListener() {
 
-            @Override
-            public void stateChanged(ChangeEvent e) {
-                refreshLogIfOnTop();
-            }
-        });
+                @Override
+                public void stateChanged(ChangeEvent e) {
+                    refreshLogIfOnTop();
+                }
+            });
+        }
     }
 
     private JCheckBox createSystemOutputCheckbox() {
@@ -292,7 +294,11 @@ public class LogPanel extends JPanel {
     }
 
     protected void refreshLogIfOnTop() {
-        if (MainFrame.get().getTabs().getSelectedComponent() == LogPanel.this) {
+        MainFrame frame = MainFrame.get();
+        boolean visibleInFrame = isShowing();
+        boolean selectedAdminTab = frame != null && frame.getTabs() != null
+                && frame.getTabs().getSelectedComponent() == LogPanel.this;
+        if (visibleInFrame || selectedAdminTab) {
             if (logEntries.isRefreshNeeded()) {
                 logEntries.refresh();
             }

@@ -43,6 +43,7 @@ import java.awt.KeyEventDispatcher;
 import java.awt.KeyboardFocusManager;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
+import java.io.File;
 import java.lang.reflect.Method;
 import java.security.InvalidParameterException;
 import java.util.HashMap;
@@ -84,6 +85,7 @@ import javax.swing.undo.UndoManager;
 import org.openpnp.Main;
 import org.openpnp.Translations;
 import org.openpnp.gui.components.CameraPanel;
+import org.openpnp.gui.operator.OperatorPanel;
 import org.openpnp.gui.components.ThemeDialog;
 import org.openpnp.gui.importer.BoardImporter;
 import org.openpnp.gui.support.AbstractConfigurationWizard;
@@ -146,6 +148,7 @@ public class MainFrame extends JFrame {
     private static final int MINIMUM_WINDOW_SIZE = 50;
 
     private final Configuration configuration;
+    private AccessLevel accessLevel;
 
     private static MainFrame mainFrame;
 
@@ -264,12 +267,98 @@ public class MainFrame extends JFrame {
     private JPanel panel_2;
     private ScheduledExecutorService scheduledExecutor;
     private JMenuBar menuBar;
+    private JMenuItem mnNewJob;
+    private JMenuItem mnSaveConfiguration;
     private JMenu mnImport;
     private JMenu mnScripts;
     private JMenu mnWindows;
+    private OperatorPanel operatorPanel;
+    private JTabbedPane operatorTabs;
+    private LogPanel logPanel;
 
     public JTabbedPane getTabs() {
         return tabs;
+    }
+
+    public AccessLevel getAccessLevel() {
+        return accessLevel;
+    }
+
+    public void setAccessLevel(AccessLevel accessLevel) {
+        this.accessLevel = accessLevel == null ? AccessLevel.ADMINISTRATOR : accessLevel;
+        if (splitPaneMachineAndTabs == null || tabs == null) {
+            updateAccessLevelMenus();
+            return;
+        }
+        if (this.accessLevel == AccessLevel.OPERATOR) {
+            splitPaneMachineAndTabs.setRightComponent(getOperatorTabs());
+            operatorPanel.operatorViewActivated();
+        }
+        else {
+            ensureAdminTabs();
+            splitPaneMachineAndTabs.setRightComponent(tabs);
+            updateMenuState(tabs.getSelectedComponent());
+        }
+        updateAccessLevelMenus();
+        splitPaneMachineAndTabs.revalidate();
+        splitPaneMachineAndTabs.repaint();
+    }
+
+    private JTabbedPane getOperatorTabs() {
+        if (operatorTabs == null) {
+            operatorTabs = new JTabbedPane(JTabbedPane.TOP);
+            operatorPanel = new OperatorPanel(this, jobPanel);
+            operatorTabs.addTab("Runtime", null, operatorPanel, null);
+        }
+        if (logPanel != null && operatorTabs.indexOfComponent(logPanel) < 0) {
+            if (logPanel.getParent() != null) {
+                logPanel.getParent().remove(logPanel);
+            }
+            operatorTabs.addTab(Translations.getString("MainFrame.RightComponent.tabs.Log"), null, logPanel, null);
+        }
+        return operatorTabs;
+    }
+
+    private void ensureAdminTabs() {
+        if (jobPanel != null && tabs.indexOfComponent(jobPanel) < 0) {
+            if (jobPanel.getParent() != null) {
+                jobPanel.getParent().remove(jobPanel);
+            }
+            tabs.insertTab(Translations.getString("MainFrame.RightComponent.tabs.Job"), null, jobPanel, null, 0);
+        }
+        if (logPanel != null && tabs.indexOfComponent(logPanel) < 0) {
+            if (logPanel.getParent() != null) {
+                logPanel.getParent().remove(logPanel);
+            }
+            tabs.addTab(Translations.getString("MainFrame.RightComponent.tabs.Log"), null, logPanel, null);
+        }
+    }
+
+    private void updateAccessLevelMenus() {
+        boolean admin = accessLevel == AccessLevel.ADMINISTRATOR;
+        if (mnNewJob != null) {
+            mnNewJob.setVisible(admin);
+            mnNewJob.setEnabled(admin);
+        }
+        if (mnSaveConfiguration != null) {
+            mnSaveConfiguration.setVisible(admin);
+            mnSaveConfiguration.setEnabled(admin);
+        }
+        if (mnImport != null) {
+            mnImport.setVisible(admin);
+            if (!admin) {
+                mnImport.setEnabled(false);
+            }
+        }
+        if (mnWindows != null) {
+            mnWindows.setVisible(admin);
+        }
+        if (scriptFileWatcher != null) {
+            scriptFileWatcher.setOpenScriptsDirectoryVisible(admin);
+            File scriptsDirectory = configuration.getScripting().getScriptsDirectory();
+            scriptFileWatcher.setScriptsDirectory(admin ? scriptsDirectory
+                    : new File(scriptsDirectory, "Operator Scripts")); //$NON-NLS-1$
+        }
     }
 
     public Map<KeyStroke, Action> getHotkeyActionMap() {
@@ -292,8 +381,13 @@ public class MainFrame extends JFrame {
     }
 
     public MainFrame(Configuration configuration) {
+        this(configuration, AccessLevel.ADMINISTRATOR);
+    }
+
+    public MainFrame(Configuration configuration, AccessLevel accessLevel) {
         mainFrame = this;
         this.configuration = configuration;
+        this.accessLevel = accessLevel;
         LengthCellValue.setConfiguration(configuration);
         RotationCellValue.setConfiguration(configuration);
         HeadCellValue.setConfiguration(configuration);
@@ -358,16 +452,20 @@ public class MainFrame extends JFrame {
         mnFile.setMnemonic(KeyEvent.VK_F);
         menuBar.add(mnFile);
 
-        mnFile.add(new JMenuItem(jobPanel.newJobAction));
+        mnNewJob = new JMenuItem(jobPanel.newJobAction);
+        mnFile.add(mnNewJob);
         mnFile.add(new JMenuItem(jobPanel.openJobAction));
 
         mnFile.add(jobPanel.mnOpenRecent);
+        mnFile.addSeparator();
+        mnFile.add(new JMenuItem(switchLoginAction));
 
         mnFile.addSeparator();
         mnFile.add(new JMenuItem(jobPanel.saveJobAction));
         mnFile.add(new JMenuItem(jobPanel.saveJobAsAction));
         mnFile.addSeparator();
-        mnFile.add(new JMenuItem(saveConfigAction));
+        mnSaveConfiguration = new JMenuItem(saveConfigAction);
+        mnFile.add(mnSaveConfiguration);
 
 
         // File -> Import
@@ -717,7 +815,7 @@ public class MainFrame extends JFrame {
             });
 
         tabs = new JTabbedPane(JTabbedPane.TOP);
-        splitPaneMachineAndTabs.setRightComponent(tabs);
+        logPanel = new LogPanel();
 
         splitPaneMachineAndTabs
                 .setDividerLocation(prefs.getInt(PREF_DIVIDER_POSITION, PREF_DIVIDER_POSITION_DEF));
@@ -749,7 +847,6 @@ public class MainFrame extends JFrame {
         tabs.addTab(Translations.getString("MainFrame.RightComponent.tabs.IssuesAndSolutions"), //$NON-NLS-1$
                 null, issuesAndSolutionsPanel, null);
 
-        LogPanel logPanel = new LogPanel();
         tabs.addTab(Translations.getString("MainFrame.RightComponent.tabs.Log"),
                 null, logPanel, null); //$NON-NLS-1$
 
@@ -758,6 +855,7 @@ public class MainFrame extends JFrame {
             public void stateChanged(ChangeEvent e) {
                 updateMenuState(tabs.getSelectedComponent());
             }});
+        setAccessLevel(accessLevel);
         
         panelStatusAndDros = new JPanel();
         panelStatusAndDros.setBorder(null);
@@ -809,6 +907,7 @@ public class MainFrame extends JFrame {
         splitPaneMachineAndTabs.setResizeWeight(0.1);
 
         addImporterMenuOptions();
+        updateAccessLevelMenus();
 
         addComponentListener(mainFrameListener);
         
@@ -818,6 +917,7 @@ public class MainFrame extends JFrame {
 	            configuration.load();
 	            scriptFileWatcher = new ScriptFileWatcher(configuration.getScripting());
 	            scriptFileWatcher.setMenu(mnScripts);
+	            updateAccessLevelMenus();
 	            
 	            if (Configuration.get().getMachine().getProperty("Welcome2_0_Dialog_Shown") == null) {
 	                Welcome2_0Dialog dialog = new Welcome2_0Dialog(this);
@@ -843,7 +943,9 @@ public class MainFrame extends JFrame {
 	            }
 	        }
 	    }
-        splitWindows();
+        if (accessLevel == AccessLevel.ADMINISTRATOR) {
+            splitWindows();
+        }
     }
 
     // 20161222 - ldpgh/lutz_dd
@@ -1283,6 +1385,14 @@ public class MainFrame extends JFrame {
         @Override
         public void actionPerformed(ActionEvent arg0) {
             ThemeDialog.showThemeDialog(mainFrame);
+        }
+    };
+
+    private Action switchLoginAction = new AbstractAction("Login / Switch Login") {
+        @Override
+        public void actionPerformed(ActionEvent arg0) {
+            AccessLevel selected = AccessLevelLoginDialog.showSwitchDialog(MainFrame.this, accessLevel);
+            setAccessLevel(selected);
         }
     };
 
