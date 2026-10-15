@@ -3,13 +3,18 @@ package org.openpnp.vision.cnn;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -198,6 +203,96 @@ class JythonInteropTest {
         finally {
             cameraImage.release();
         }
+    }
+
+    @Test
+    void cnnJythonReusesCompiledEngineButNotPreviousFrameGlobals() throws Exception {
+        nu.pattern.OpenCV.loadLocally();
+        Mat cameraImage = new Mat(4, 6, CvType.CV_8UC3, new Scalar(11, 22, 33));
+        Path scriptPath = directory.resolve("cached-cnn.py");
+        String source = "from org.opencv.core import Point, RotatedRect, Size\n"
+                + "from org.openpnp.vision.pipeline import CvStage\n"
+                + "if 'sticky' in globals():\n"
+                + "    raise ValueError('Stale Jython globals leaked from another frame')\n"
+                + "sticky = True\n"
+                + "offset = 1\n"
+                + "CvStage.Result(None, RotatedRect(Point(float(args) + offset, 2.0), "
+                + "Size(2.0, 1.0), 17.0))\n";
+        try (CvPipeline pipeline = new CvPipeline()) {
+            addDeterministicInput(pipeline, cameraImage);
+            Files.writeString(scriptPath, source);
+            ScriptRun script = new ScriptRun();
+            script.setFile(scriptPath.toFile());
+            script.setArgs("4");
+            pipeline.add("results", script);
+
+            pipeline.process();
+            assertEquals(5.0, pipeline.getExpectedResult("results")
+                    .getExpectedModel(RotatedRect.class).center.x, 0.0001);
+            Object initialCache = cnnScriptCache(script);
+            assertNotNull(initialCache);
+
+            script.setArgs("5");
+            pipeline.process();
+            assertEquals(6.0, pipeline.getExpectedResult("results")
+                    .getExpectedModel(RotatedRect.class).center.x, 0.0001);
+            assertSame(initialCache, cnnScriptCache(script));
+
+            // A same-sized edit with exactly the same modification time must invalidate.
+            FileTime previousTime = Files.getLastModifiedTime(scriptPath);
+            Files.writeString(scriptPath, source.replace("offset = 1", "offset = 2"));
+            Files.setLastModifiedTime(scriptPath, previousTime);
+            pipeline.process();
+            assertEquals(7.0, pipeline.getExpectedResult("results")
+                    .getExpectedModel(RotatedRect.class).center.x, 0.0001);
+            assertNotSame(initialCache, cnnScriptCache(script));
+
+            Object secondCache = cnnScriptCache(script);
+            Path otherFile = directory.resolve("another-cnn.py");
+            Files.writeString(otherFile, source);
+            script.setFile(otherFile.toFile());
+            assertNull(cnnScriptCache(script));
+            pipeline.process();
+            assertEquals(6.0, pipeline.getExpectedResult("results")
+                    .getExpectedModel(RotatedRect.class).center.x, 0.0001);
+            assertNotSame(secondCache, cnnScriptCache(script));
+        }
+        finally {
+            cameraImage.release();
+        }
+    }
+
+    @Test
+    void nonCnnJythonExecutionStillUsesUncachedLegacyPath() throws Exception {
+        nu.pattern.OpenCV.loadLocally();
+        Mat cameraImage = new Mat(4, 6, CvType.CV_8UC3, new Scalar(11, 22, 33));
+        Path scriptPath = directory.resolve("legacy.py");
+        Files.writeString(scriptPath,
+                "from org.openpnp.vision.pipeline import CvStage\n"
+                + "CvStage.Result(None, 'legacy')\n");
+        try (CvPipeline pipeline = new CvPipeline()) {
+            pipeline.add("capture", new CvStage() {
+                @Override
+                public Result process(CvPipeline current) {
+                    return new Result(cameraImage.clone(), ColorSpace.Bgr);
+                }
+            });
+            ScriptRun script = new ScriptRun();
+            script.setFile(scriptPath.toFile());
+            pipeline.add("results", script);
+            pipeline.process();
+            assertEquals("legacy", pipeline.getExpectedResult("results").getModel());
+            assertNull(cnnScriptCache(script));
+        }
+        finally {
+            cameraImage.release();
+        }
+    }
+
+    private static Object cnnScriptCache(ScriptRun script) throws Exception {
+        Field cacheField = ScriptRun.class.getDeclaredField("cnnJythonCache");
+        cacheField.setAccessible(true);
+        return cacheField.get(script);
     }
 
     private static void addDeterministicInput(CvPipeline pipeline, Mat cameraImage) {
