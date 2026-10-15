@@ -149,8 +149,12 @@ public class ScriptRun extends CvStage {
             bindings.put("__file__", filename);
             bindings.put(CACHED_CODE_KEY, cached.pythonCode);
             bindings.put(CACHED_RESULT_KEY, null);
+            long started = System.nanoTime();
             cached.runner.eval(bindings);
-            return checkedResult(bindings.get(CACHED_RESULT_KEY), true);
+            Result result = checkedResult(bindings.get(CACHED_RESULT_KEY), true);
+            Logger.debug("CNN ScriptRun \"{}\" cached Jython execution took {} ms.",
+                    getName(), (System.nanoTime() - started) / 1_000_000.0);
+            return result;
         }
     }
 
