@@ -4,6 +4,9 @@ import java.io.File;
 import java.io.FileReader;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import javax.script.Bindings;
 import javax.script.Compilable;
@@ -29,8 +32,13 @@ public class ScriptRun extends CvStage {
     private static final String PYTHON_FACTORY = "org.python.jsr223.PyScriptEngineFactory";
     private static final String CACHED_RESULT_KEY = "__openpnp_result";
     private static final String CACHED_CODE_KEY = "__openpnp_code";
-    private final Object cnnJythonLock = new Object();
-    private transient CachedCnnJython cnnJythonCache;
+    // Vision callers may clone CvPipeline for each operation. Cache by absolute script path
+    // so those new stage instances reuse the same compiled interpreter. Limit memory and
+    // serialize Jython, which is not thread-safe when sharing one engine.
+    private static final Object CNN_JYTHON_LOCK = new Object();
+    private static final int CNN_CACHE_LIMIT = 8;
+    private static final Map<String, CachedCnnJython> CNN_JYTHON_CACHE =
+            new LinkedHashMap<>(16, 0.75f, true);
 
     @Attribute
     private File file = new File("");
@@ -40,12 +48,7 @@ public class ScriptRun extends CvStage {
     }
 
     public void setFile(File file) {
-        synchronized (cnnJythonLock) {
-            if (!java.util.Objects.equals(this.file, file)) {
-                discardCnnJythonCache();
-            }
-            this.file = file;
-        }
+        this.file = file;
     }
 
     @Attribute
@@ -112,22 +115,30 @@ public class ScriptRun extends CvStage {
     }
 
     /**
-     * One interpreter and precompiled Python code per CNN ScriptRun stage. Every invocation
-     * gets new bindings, so globals and CvStage.Result cannot leak across frames. The lock
-     * serializes the interpreter if this stage is shared across pipelines.
+     * One interpreter and precompiled Python code per CNN script file, even when the vision
+     * operation clones its pipeline. Each invocation gets fresh bindings. A bounded global
+     * lock serializes Jython use but has no effect on non-CNN scripts or event handlers.
      */
     private Result evaluateCachedCnnJython(CvPipeline pipeline) throws Exception {
         // Compare contents, not just timestamps: edits must take effect immediately, even
         // if the filesystem timestamp granularity or file size would hide them.
-        final String filename = file.getAbsolutePath();
+        final String filename = file.toPath().toAbsolutePath().normalize().toString();
         final String source = Files.toString(file, StandardCharsets.UTF_8);
-        synchronized (cnnJythonLock) {
-            CachedCnnJython cached = cnnJythonCache;
-            if (cached == null || !filename.equals(cached.filename)
-                    || !source.equals(cached.source)) {
-                discardCnnJythonCache();
+        synchronized (CNN_JYTHON_LOCK) {
+            CachedCnnJython cached = CNN_JYTHON_CACHE.get(filename);
+            if (cached == null || !source.equals(cached.source)) {
+                if (cached != null) {
+                    CNN_JYTHON_CACHE.remove(filename);
+                    closeCnnJythonEngine(cached.engine);
+                }
                 cached = compileCnnJython(filename, source);
-                cnnJythonCache = cached;
+                CNN_JYTHON_CACHE.put(filename, cached);
+                while (CNN_JYTHON_CACHE.size() > CNN_CACHE_LIMIT) {
+                    Iterator<CachedCnnJython> oldEntries = CNN_JYTHON_CACHE.values().iterator();
+                    CachedCnnJython evicted = oldEntries.next();
+                    oldEntries.remove();
+                    closeCnnJythonEngine(evicted.engine);
+                }
                 Logger.debug("CNN ScriptRun \"{}\" compiled Jython script \"{}\"", getName(), filename);
             }
             Bindings bindings = cached.engine.createBindings();
@@ -180,13 +191,6 @@ public class ScriptRun extends CvStage {
         catch (Exception | LinkageError e) {
             closeCnnJythonEngine(engine);
             throw e;
-        }
-    }
-
-    private void discardCnnJythonCache() {
-        if (cnnJythonCache != null) {
-            closeCnnJythonEngine(cnnJythonCache.engine);
-            cnnJythonCache = null;
         }
     }
 
