@@ -91,6 +91,37 @@ binary mask, probability preview, and exact returned fit PNGs to `/tmp` when
 stage directly: do not use a separate adapter that changes the rectangle's size.
 The script must be validated on your physical machine before placement.
 
+### CNN ScriptRun Jython performance
+
+Only CNN-dependent `.py` ScriptRun stages use a **shared, bounded** Jython
+interpreter and compiled-script cache. A fresh pipeline or cloned ScriptRun
+stage can reuse the same compiled script; each frame receives new isolated
+bindings for `pipeline`, `stage`, `args`, and the captured result. A maximum
+of eight script files is retained. Files are recompiled when their contents
+change (including same-size edits and unchanged timestamps); older cached
+interpreters are closed when evicted. Access is serialized to avoid concurrent
+use of the same Jython engine.
+
+Ordinary scripts, job/event scripts handled by `Scripting`, and `ScriptRun`
+stages without a preceding successful CNN stage use their previous engine
+lifecycle. The `ScriptRun` final-expression / final-assignment result contract
+and CNN failure-stop behavior remain unchanged.
+
+On the **first execution** of a script, the engine still initializes and
+compiles the Python source. Subsequent executions log
+`CNN ScriptRun "<stage>" cached Jython execution took ... ms` at DEBUG.
+Benchmark after a warm-up and with `debug=0` in the Python stage args.
+If warm executions remain slow, measure the image processing itself rather
+than assuming the Jython engine is being recreated.
+
+#### IntelliJ CPU threading setting
+
+In **Run → Edit Configurations → [the Application launching org.openpnp.Main]**,
+enable **Modify options → Add VM options**, then supply e.g.
+`-Dopenpnp.cnn.intraOpThreads=4`. Restart the application to reload ONNX
+sessions. The default is already `min(4, availableProcessors)`; try `1`, `2`,
+and `4` for controlled benchmarks.
+
 ### CPU inference threading
 
 ONNX Runtime inference uses a conservative default of up to four intra-op CPU threads
