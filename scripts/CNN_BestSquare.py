@@ -15,6 +15,9 @@
 #   fit=minarea_square  Alias for debugger_square; minarea aliases debugger.
 #   sidePx=450          Optional desired horizontal size in pixels for four-edge methods.
 #   edgeProb=0.5        Iso-probability for four-edge fitting (independent of threshold).
+#   onMissing=empty      For mode=pocket only: return an empty Java list instead of failing.
+#                        Default onMissing=error retains fail-fast behavior.
+#                        Use only when the calling job can safely defer the placement.
 #
 # Debug images saved to /tmp on every run (debug=1, default):
 #   lumen_cnn_input.png, lumen_cnn_mask.png, lumen_cnn_probability.png,
@@ -36,6 +39,7 @@ threshold = 0.5
 mode = 'die'
 fit = 'debugger'
 debug = True
+on_missing = 'error'
 side_px = None
 edge_prob = 0.5
 min_area_fraction = 0.00025
@@ -62,6 +66,8 @@ if args is not None and str(args).strip():
             debug = value.lower() in ('1', 'true', 'yes', 'on')
         elif key == 'fit':
             fit = value.lower()
+        elif key in ('onmissing', 'missing'):
+            on_missing = value.lower()
         elif key == 'sidepx':
             side_px = float(value)
         elif key == 'edgeprob':
@@ -81,6 +87,10 @@ if mode in ('dry', 'wet', 'dry_pocket', 'wet_pocket'):
     mode = 'pocket'
 if mode not in ('die', 'pocket'):
     raise ValueError('mode must be die or pocket')
+if on_missing not in ('error', 'empty'):
+    raise ValueError('onMissing must be error or empty')
+if on_missing == 'empty' and mode != 'pocket':
+    raise ValueError('onMissing=empty is only permitted with mode=pocket')
 if fit == 'robust':
     fit = 'square'  # Backward-compatible arguments.
 if fit in ('minarea', 'min_area'):
@@ -106,7 +116,7 @@ if not (0.0 < min_area_fraction < 1.0):
 if max_aspect_ratio < 1.0 or not (0.0 < min_fill_ratio <= 1.0) or edge_margin < 0:
     raise ValueError('Invalid filter settings')
 
-print('CNN_BestSquare v2026-10-15-fit-modes-github: script=%s args=%s fit=%s' %
+print('CNN_BestSquare v2026-10-15-pocket-empty-safe: script=%s args=%s fit=%s' %
       (str(stage.getFile()), str(args), fit))
 
 cnn_result = pipeline.getExpectedResult(cnn_stage)
@@ -441,31 +451,40 @@ try:
                 selected_rect, best_distance = rect, distance
 
     if selected_rect is None:
-        raise ValueError('No matching %s segmentation at threshold %.3f' % (mode, threshold))
-
-    if fit in ('square', 'probsquare'):
-        base_rect = fit_probability_square(selected_rect)
+        if on_missing == 'empty':
+            # Absence of an adequate wet/dry pocket is a NEGATIVE DETECTION,
+            # not an inference or hardware failure. The placement-time script
+            # may retry and defer it. Never generate a fictional rectangle.
+            final_rect = None
+            print('CNN_BestSquare: NO_POCKET_DETECTED threshold=%.3f; '
+                  'returning empty List<RotatedRect> (onMissing=empty)' % threshold)
+        else:
+            raise ValueError('No matching %s segmentation at threshold %.3f' % (mode, threshold))
     else:
-        base_rect = canonical_rectangle(selected_rect)
+        if fit in ('square', 'probsquare'):
+            base_rect = fit_probability_square(selected_rect)
+        else:
+            base_rect = canonical_rectangle(selected_rect)
 
-    if fit in ('square', 'debugger_square'):
-        final_rect = enforce_physical_square(base_rect)
-    else:
-        final_rect = base_rect
-    print('CNN_BestSquare: RETURN fit=%s center=(%.3f, %.3f) size=%.3f x %.3f angle=%.3f' %
-          (fit, final_rect.center.x, final_rect.center.y,
-           final_rect.size.width, final_rect.size.height, final_rect.angle))
+        if fit in ('square', 'debugger_square'):
+            final_rect = enforce_physical_square(base_rect)
+        else:
+            final_rect = base_rect
+        print('CNN_BestSquare: RETURN fit=%s center=(%.3f, %.3f) size=%.3f x %.3f angle=%.3f' %
+              (fit, final_rect.center.x, final_rect.center.y,
+               final_rect.size.width, final_rect.size.height, final_rect.angle))
 
     if debug:
         frame = pipeline.getWorkingImage().clone()
         try:
-            vertices = array([Point() for _ in range(4)], Point)
-            final_rect.points(vertices)
-            for i in range(4):
-                Imgproc.line(frame, vertices[i], vertices[(i + 1) % 4],
-                             Scalar(30, 240, 60), 2, Imgproc.LINE_AA)
-            Imgproc.circle(frame, final_rect.center, 3,
-                           Scalar(30, 240, 60), -1, Imgproc.LINE_AA)
+            if final_rect is not None:
+                vertices = array([Point() for _ in range(4)], Point)
+                final_rect.points(vertices)
+                for i in range(4):
+                    Imgproc.line(frame, vertices[i], vertices[(i + 1) % 4],
+                                 Scalar(30, 240, 60), 2, Imgproc.LINE_AA)
+                Imgproc.circle(frame, final_rect.center, 3,
+                               Scalar(30, 240, 60), -1, Imgproc.LINE_AA)
             if not Imgcodecs.imwrite('/tmp/lumen_cnn_fit.png', frame):
                 raise IOError('Could not write /tmp/lumen_cnn_fit.png')
         finally:
@@ -478,4 +497,4 @@ finally:
     binary.release()
 
 # ScriptRun captures the last expression, not a top-level return statement.
-CvStage.Result(None, final_rect)
+CvStage.Result(None, ArrayList() if final_rect is None else final_rect)
