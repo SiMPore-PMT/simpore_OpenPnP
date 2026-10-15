@@ -57,7 +57,7 @@ public class CNN extends CvStage {
     public void customizePropertySheet(PipelinePropertySheetTable table, CvPipeline pipeline) {
         super.customizePropertySheet(table, pipeline);
         List<String> identifiers = new ArrayList<>(CnnModelManager.get(Configuration.get()).listModelIds());
-        if (modelId != null && !identifiers.contains(modelId)) {
+        if (modelId != null && !modelId.trim().isEmpty() && !identifiers.contains(modelId)) {
             identifiers.add(modelId);
         }
         ComboBoxPropertyEditor editor = new ComboBoxPropertyEditor();
