@@ -240,10 +240,10 @@ public final class ModelMetadata {
             throw invalid(name + " must be a dynamic NCHW four-element array.");
         }
         com.google.gson.JsonArray shape = value.getAsJsonArray();
-        if (!shape.get(0).isString() || !"batch".equals(shape.get(0).getAsString())
-                || !shape.get(1).isNumber() || !Integer.toString(channels).equals(shape.get(1).getAsString())
-                || !shape.get(2).isString() || !"height".equals(shape.get(2).getAsString())
-                || !shape.get(3).isString() || !"width".equals(shape.get(3).getAsString())) {
+        if (!shape.get(0).isJsonPrimitive() && shape.get(0).getAsJsonPrimitive().isString() || !"batch".equals(shape.get(0).getAsString())
+                || !shape.get(1).isJsonPrimitive() && shape.get(1).getAsJsonPrimitive().isNumber() || !Integer.toString(channels).equals(shape.get(1).getAsString())
+                || !shape.get(2).isJsonPrimitive() && shape.get(2).getAsJsonPrimitive().isString() || !"height".equals(shape.get(2).getAsString())
+                || !shape.get(3).isJsonPrimitive() && shape.get(3).getAsJsonPrimitive().isString() || !"width".equals(shape.get(3).getAsString())) {
             throw invalid(name + " must declare [batch, " + channels + ", height, width].");
         }
     }
