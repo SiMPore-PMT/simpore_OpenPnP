@@ -12,9 +12,9 @@ import com.google.gson.JsonParser;
 /**
  * Validated metadata for an ONNX segmentation model.
  *
- * <p>Schema version 1 is an explicit adapter contract for the DeepLabs exporter. The exporter
- * contract was not available when this adapter was added; unsupported or absent preprocessing
- * fields are rejected rather than inferred. Output interpretation may be logits or probabilities.</p>
+ * <p>Supports the native OpenPnP schemaVersion 1 format and the actual DeepLabs_Lumen
+ * metadata_version 1 export. Preprocessing-critical exporter declarations are strictly
+ * validated rather than silently defaulted.</p>
  */
 public final class ModelMetadata {
     public static final int SUPPORTED_SCHEMA_VERSION = 1;
@@ -100,6 +100,12 @@ public final class ModelMetadata {
                 throw invalid("The metadata root must be a JSON object.");
             }
             JsonObject root = parsed.getAsJsonObject();
+            if (root.has("metadata_version")) {
+                if (root.has("schemaVersion")) {
+                    throw invalid("Metadata must use either metadata_version or schemaVersion, not both.");
+                }
+                return readDeepLabsExport(root, metadataPath, metadataDirectory);
+            }
             requireKeys(root, "schemaVersion", "modelId", "modelPath", "task", "input", "output",
                     "downsampleFactor", "inputAlignment", "defaultThreshold");
 
@@ -164,6 +170,81 @@ public final class ModelMetadata {
         }
         catch (com.google.gson.JsonParseException e) {
             throw new IOException("Invalid JSON in model metadata " + metadataPath + ": " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Parse the metadata emitted by DeepLabs_Lumen's ONNX exporter, without requiring users to
+     * hand-edit its JSON. Model IDs come from the metadata filename (e.g. die_best.json ->
+     * die_best), since exporter metadata does not contain a model identifier.
+     */
+    private static ModelMetadata readDeepLabsExport(JsonObject root, Path metadataPath,
+            Path metadataDirectory) throws IOException {
+        int version = integer(root, "metadata_version", 1, Integer.MAX_VALUE);
+        if (version != SUPPORTED_SCHEMA_VERSION) {
+            throw invalid("Unsupported DeepLabs metadata_version " + version + ".");
+        }
+        requireValue(root, "architecture", "deeplabv3plus");
+        string(root, "encoder"); // Informational; the exported ONNX graph contains the architecture.
+        int alignment = integer(root, "encoder_output_stride", 1, Integer.MAX_VALUE);
+        if (alignment != 8 && alignment != 16) {
+            throw invalid("Unsupported encoder_output_stride " + alignment + "; expected 8 or 16.");
+        }
+        int downsample = integer(root, "image_downsample_factor", 1, Integer.MAX_VALUE);
+        String task = string(root, "task");
+        String modelFile = string(root, "model_file");
+        if (!modelFile.endsWith(".onnx")) {
+            throw invalid("model_file must name an .onnx file.");
+        }
+        Path modelPath = resolveModelPath(metadataDirectory, modelFile);
+
+        JsonObject input = object(root, "input");
+        String inputName = string(input, "name");
+        requireValue(input, "dtype", "float32");
+        requireShape(input, "shape", 3);
+        requireValue(input, "color", "RGB");
+        requireValue(input, "padding", "right/bottom BORDER_REPLICATE to encoder output stride");
+        JsonObject normalization = object(input, "normalization");
+        requireValue(normalization, "type",
+                "ImageNet mean/std after RGB uint8 scaling to [0, 1]");
+        double[] mean = numberArray(normalization, "mean", 3, false);
+        double[] std = numberArray(normalization, "std", 3, true);
+
+        JsonObject output = object(root, "output");
+        String outputName = string(output, "name");
+        requireValue(output, "dtype", "float32");
+        requireShape(output, "shape", 1);
+        requireValue(output, "semantics", "raw single-channel foreground logits");
+        requireValue(output, "postprocessing",
+                "sigmoid, crop unpadded model dimensions, resize to native resolution");
+
+        double threshold = number(root, "checkpoint_threshold");
+        if (threshold < 0 || threshold > 1) {
+            throw invalid("checkpoint_threshold must be between 0 and 1 inclusive.");
+        }
+
+        String filename = metadataPath.getFileName().toString();
+        String modelId = filename.substring(0, filename.length() - ".json".length());
+        if (modelId.isEmpty()) {
+            throw invalid("DeepLabs metadata must have a nonempty filename before .json.");
+        }
+        return new ModelMetadata(version, modelId, task, metadataPath, modelPath,
+                inputName, outputName, OUTPUT_LOGITS, "RGB", 1.0 / 255.0,
+                mean, std, downsample, alignment, (float) threshold);
+    }
+
+    /** Dynamic NCHW input/output shapes for the exported single-channel segmentation network. */
+    private static void requireShape(JsonObject parent, String name, int channels) throws IOException {
+        JsonElement value = parent.get(name);
+        if (value == null || !value.isJsonArray() || value.getAsJsonArray().size() != 4) {
+            throw invalid(name + " must be a dynamic NCHW four-element array.");
+        }
+        com.google.gson.JsonArray shape = value.getAsJsonArray();
+        if (!shape.get(0).isString() || !"batch".equals(shape.get(0).getAsString())
+                || !shape.get(1).isNumber() || !Integer.toString(channels).equals(shape.get(1).getAsString())
+                || !shape.get(2).isString() || !"height".equals(shape.get(2).getAsString())
+                || !shape.get(3).isString() || !"width".equals(shape.get(3).getAsString())) {
+            throw invalid(name + " must declare [batch, " + channels + ", height, width].");
         }
     }
 
