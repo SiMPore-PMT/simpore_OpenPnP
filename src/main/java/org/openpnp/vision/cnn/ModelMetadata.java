@@ -240,12 +240,23 @@ public final class ModelMetadata {
             throw invalid(name + " must be a dynamic NCHW four-element array.");
         }
         com.google.gson.JsonArray shape = value.getAsJsonArray();
-        if (!shape.get(0).isJsonPrimitive() && shape.get(0).getAsJsonPrimitive().isString() || !"batch".equals(shape.get(0).getAsString())
-                || !shape.get(1).isJsonPrimitive() && shape.get(1).getAsJsonPrimitive().isNumber() || !Integer.toString(channels).equals(shape.get(1).getAsString())
-                || !shape.get(2).isJsonPrimitive() && shape.get(2).getAsJsonPrimitive().isString() || !"height".equals(shape.get(2).getAsString())
-                || !shape.get(3).isJsonPrimitive() && shape.get(3).getAsJsonPrimitive().isString() || !"width".equals(shape.get(3).getAsString())) {
+        if (!matchesShapeDimension(shape.get(0), "batch")
+                || !matchesShapeDimension(shape.get(1), Integer.valueOf(channels))
+                || !matchesShapeDimension(shape.get(2), "height")
+                || !matchesShapeDimension(shape.get(3), "width")) {
             throw invalid(name + " must declare [batch, " + channels + ", height, width].");
         }
+    }
+
+    private static boolean matchesShapeDimension(JsonElement element, Object expected) {
+        if (element == null || !element.isJsonPrimitive()) {
+            return false;
+        }
+        if (expected instanceof Integer) {
+            return element.getAsJsonPrimitive().isNumber()
+                    && expected.toString().equals(element.getAsString());
+        }
+        return element.getAsJsonPrimitive().isString() && expected.equals(element.getAsString());
     }
 
     private static Path resolveModelPath(Path metadataDirectory, String modelPathText) throws IOException {
