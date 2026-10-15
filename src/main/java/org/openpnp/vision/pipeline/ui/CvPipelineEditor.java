@@ -232,6 +232,20 @@ public class CvPipelineEditor extends JPanel {
     }
 
     public void process() {
+        // A newly added CNN stage has no modelId until it is configured. Do not run the
+        // editor preview (or show an error dialog) until the user selects a model.
+        // Runtime pipeline execution still rejects an unconfigured CNN stage.
+        boolean unconfiguredCnn = pipeline.getStages().stream()
+                .anyMatch(stage -> stage.isEnabled() && stage instanceof CNN
+                        && (((CNN) stage).getModelId() == null
+                                || ((CNN) stage).getModelId().trim().isEmpty()));
+        if (unconfiguredCnn) {
+            if (processingWorker == null) {
+                pipeline.release();
+                resultsPanel.refresh();
+            }
+            return;
+        }
         boolean usesCnn = pipeline.getStages().stream()
                 .anyMatch(stage -> stage.isEnabled() && stage instanceof CNN);
         if (!usesCnn || !SwingUtilities.isEventDispatchThread()) {
