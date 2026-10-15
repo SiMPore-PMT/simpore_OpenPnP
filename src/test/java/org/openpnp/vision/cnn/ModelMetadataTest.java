@@ -222,13 +222,13 @@ public class ModelMetadataTest {
 
             Files.write(dir.resolve("best.onnx"), new byte[] { 1 });
             String invalidShape = deepLabsJson("best.onnx").replace(
-                    "[\\\"batch\\\",3,\\\"height\\\",\\\"width\\\"]",
-                    "[\\\"batch\\\",1,\\\"height\\\",\\\"width\\\"]");
+                    "[\"batch\",3,\"height\",\"width\"]",
+                    "[\"batch\",1,\"height\",\"width\"]");
             Files.write(json, invalidShape.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             assertThrows(IOException.class, () -> ModelMetadata.read(json));
 
             String invalidColor = deepLabsJson("best.onnx").replace(
-                    "\\\"color\\\":\\\"RGB\\\"", "\\\"color\\\":\\\"BGR\\\"");
+                    "\"color\":\"RGB\"", "\"color\":\"BGR\"");
             Files.write(json, invalidColor.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             assertThrows(IOException.class, () -> ModelMetadata.read(json));
 
@@ -243,24 +243,24 @@ public class ModelMetadataTest {
 
     private static String deepLabsJson(String modelFile) {
         return "{"
-                + "\\\"metadata_version\\\":1,\\\"model_file\\\":\\\"" + modelFile + "\\\","
-                + "\\\"source_checkpoint\\\":\\\"best.pt\\\",\\\"task\\\":\\\"die\\\","
-                + "\\\"architecture\\\":\\\"deeplabv3plus\\\",\\\"encoder\\\":\\\"resnet50\\\","
-                + "\\\"encoder_output_stride\\\":8,\\\"image_downsample_factor\\\":4,"
-                + "\\\"input\\\":{\\\"name\\\":\\\"images\\\",\\\"dtype\\\":\\\"float32\\\","
-                + "\\\"shape\\\":[\\\"batch\\\",3,\\\"height\\\",\\\"width\\\"],"
-                + "\\\"color\\\":\\\"RGB\\\","
-                + "\\\"normalization\\\":{\\\"type\\\":"
-                + "\\\"ImageNet mean/std after RGB uint8 scaling to [0, 1]\\\","
-                + "\\\"mean\\\":[0.485,0.456,0.406],\\\"std\\\":[0.229,0.224,0.225]},"
-                + "\\\"padding\\\":\\\"right/bottom BORDER_REPLICATE to encoder output stride\\\"},"
-                + "\\\"output\\\":{\\\"name\\\":\\\"logits\\\",\\\"dtype\\\":\\\"float32\\\","
-                + "\\\"shape\\\":[\\\"batch\\\",1,\\\"height\\\",\\\"width\\\"],"
-                + "\\\"semantics\\\":\\\"raw single-channel foreground logits\\\","
-                + "\\\"postprocessing\\\":"
-                + "\\\"sigmoid, crop unpadded model dimensions, resize to native resolution\\\"},"
-                + "\\\"checkpoint_threshold\\\":0.5,\\\"opset_version\\\":17,"
-                + "\\\"verification\\\":{\\\"input_name\\\":\\\"images\\\",\\\"output_name\\\":\\\"logits\\\"}"
+                + "\"metadata_version\":1,\"model_file\":\"" + modelFile + "\","
+                + "\"source_checkpoint\":\"best.pt\",\"task\":\"die\","
+                + "\"architecture\":\"deeplabv3plus\",\"encoder\":\"resnet50\","
+                + "\"encoder_output_stride\":8,\"image_downsample_factor\":4,"
+                + "\"input\":{\"name\":\"images\",\"dtype\":\"float32\","
+                + "\"shape\":[\"batch\",3,\"height\",\"width\"],"
+                + "\"color\":\"RGB\","
+                + "\"normalization\":{\"type\":"
+                + "\"ImageNet mean/std after RGB uint8 scaling to [0, 1]\","
+                + "\"mean\":[0.485,0.456,0.406],\"std\":[0.229,0.224,0.225]},"
+                + "\"padding\":\"right/bottom BORDER_REPLICATE to encoder output stride\"},"
+                + "\"output\":{\"name\":\"logits\",\"dtype\":\"float32\","
+                + "\"shape\":[\"batch\",1,\"height\",\"width\"],"
+                + "\"semantics\":\"raw single-channel foreground logits\","
+                + "\"postprocessing\":"
+                + "\"sigmoid, crop unpadded model dimensions, resize to native resolution\"},"
+                + "\"checkpoint_threshold\":0.5,\"opset_version\":17,"
+                + "\"verification\":{\"input_name\":\"images\",\"output_name\":\"logits\"}"
                 + "}";
     }
 
