@@ -181,6 +181,89 @@ public class ModelMetadataTest {
         }
     }
 
+    @Test
+    public void readsDeepLabsExporterMetadataWithoutHandConversion() throws Exception {
+        Path dir = Files.createTempDirectory("cnn-deeplabs-export");
+        try {
+            Path onnx = Files.write(dir.resolve("best.onnx"), new byte[] { 1, 2, 3 });
+            Path json = Files.write(dir.resolve("die_best.json"),
+                    deepLabsJson("best.onnx").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+            ModelMetadata metadata = ModelMetadata.read(json);
+            assertEquals(1, metadata.getSchemaVersion());
+            assertEquals("die_best", metadata.getModelId());
+            assertEquals("die", metadata.getTask());
+            assertEquals(onnx.toRealPath(), metadata.getModelPath());
+            assertEquals("images", metadata.getInputName());
+            assertEquals("logits", metadata.getOutputName());
+            assertEquals(4, metadata.getDownsampleFactor());
+            assertEquals(8, metadata.getInputAlignment());
+            assertEquals(0.5f, metadata.getDefaultThreshold(), 0.00001f);
+            assertEquals("RGB", metadata.getColorOrder());
+            assertEquals(1.0 / 255.0, metadata.getInputScale(), 1e-12);
+            assertEquals(ModelMetadata.OUTPUT_LOGITS, metadata.getOutputInterpretation());
+            assertArrayEquals(new double[] { 0.485, 0.456, 0.406 }, metadata.getMean(), 0.000001);
+            assertArrayEquals(new double[] { 0.229, 0.224, 0.225 }, metadata.getStd(), 0.000001);
+        }
+        finally {
+            deleteTree(dir);
+        }
+    }
+
+    @Test
+    public void rejectsUnmatchedExportModelFilenameAndInvalidPreprocessing() throws Exception {
+        Path dir = Files.createTempDirectory("cnn-deeplabs-export");
+        try {
+            // Do not silently guess a renamed ONNX filename: the exporter explicitly declares best.onnx.
+            Files.write(dir.resolve("die_best.onnx"), new byte[] { 1 });
+            Path json = Files.write(dir.resolve("die_best.json"),
+                    deepLabsJson("best.onnx").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            assertThrows(IOException.class, () -> ModelMetadata.read(json));
+
+            Files.write(dir.resolve("best.onnx"), new byte[] { 1 });
+            String invalidShape = deepLabsJson("best.onnx").replace(
+                    "[\\\"batch\\\",3,\\\"height\\\",\\\"width\\\"]",
+                    "[\\\"batch\\\",1,\\\"height\\\",\\\"width\\\"]");
+            Files.write(json, invalidShape.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            assertThrows(IOException.class, () -> ModelMetadata.read(json));
+
+            String invalidColor = deepLabsJson("best.onnx").replace(
+                    "\\\"color\\\":\\\"RGB\\\"", "\\\"color\\\":\\\"BGR\\\"");
+            Files.write(json, invalidColor.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            assertThrows(IOException.class, () -> ModelMetadata.read(json));
+
+            String badPath = deepLabsJson("../best.onnx");
+            Files.write(json, badPath.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            assertThrows(IOException.class, () -> ModelMetadata.read(json));
+        }
+        finally {
+            deleteTree(dir);
+        }
+    }
+
+    private static String deepLabsJson(String modelFile) {
+        return "{"
+                + "\\\"metadata_version\\\":1,\\\"model_file\\\":\\\"" + modelFile + "\\\","
+                + "\\\"source_checkpoint\\\":\\\"best.pt\\\",\\\"task\\\":\\\"die\\\","
+                + "\\\"architecture\\\":\\\"deeplabv3plus\\\",\\\"encoder\\\":\\\"resnet50\\\","
+                + "\\\"encoder_output_stride\\\":8,\\\"image_downsample_factor\\\":4,"
+                + "\\\"input\\\":{\\\"name\\\":\\\"images\\\",\\\"dtype\\\":\\\"float32\\\","
+                + "\\\"shape\\\":[\\\"batch\\\",3,\\\"height\\\",\\\"width\\\"],"
+                + "\\\"color\\\":\\\"RGB\\\","
+                + "\\\"normalization\\\":{\\\"type\\\":"
+                + "\\\"ImageNet mean/std after RGB uint8 scaling to [0, 1]\\\","
+                + "\\\"mean\\\":[0.485,0.456,0.406],\\\"std\\\":[0.229,0.224,0.225]},"
+                + "\\\"padding\\\":\\\"right/bottom BORDER_REPLICATE to encoder output stride\\\"},"
+                + "\\\"output\\\":{\\\"name\\\":\\\"logits\\\",\\\"dtype\\\":\\\"float32\\\","
+                + "\\\"shape\\\":[\\\"batch\\\",1,\\\"height\\\",\\\"width\\\"],"
+                + "\\\"semantics\\\":\\\"raw single-channel foreground logits\\\","
+                + "\\\"postprocessing\\\":"
+                + "\\\"sigmoid, crop unpadded model dimensions, resize to native resolution\\\"},"
+                + "\\\"checkpoint_threshold\\\":0.5,\\\"opset_version\\\":17,"
+                + "\\\"verification\\\":{\\\"input_name\\\":\\\"images\\\",\\\"output_name\\\":\\\"logits\\\"}"
+                + "}";
+    }
+
     private static Path writeMetadata(Path dir, String modelPath, String versionOverride) throws IOException {
         String json = validJson(modelPath);
         if (versionOverride != null) {
