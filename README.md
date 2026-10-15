@@ -45,3 +45,24 @@ Many thanks to ej-technologies for providing a complimentary license of install4
 creates high quality, professional installers for Java applications.
 
 More information at http://www.ej-technologies.com/products/install4j/overview.html.
+
+## CNN ONNX segmentation models (SiMPore)
+
+The optional `CNN` vision stage uses ONNX Runtime CPU inference and reads model assets from
+`<OpenPnP configuration directory>/models/` (normally `~/.openpnp2/models/` on Linux).
+Create this directory if it does not already exist. Copy each exported `.onnx` file and
+its companion DeepLabs_Lumen `.json` file into that directory.
+
+The loader accepts both the original OpenPnP `schemaVersion: 1` JSON format and the
+DeepLabs_Lumen exporter `metadata_version: 1` format. For DeepLabs files, the CNN stage's
+**modelId** is the metadata filename without the `.json` suffix: `die_best.json` is selected
+as `die_best`. The `model_file` value in the JSON is authoritative and **must match** the
+actual ONNX filename in the same directory. For example, if the JSON contains
+`"model_file": "best.onnx"`, install `best.onnx`; if you rename it to `die_best.onnx`,
+change that JSON value to `die_best.onnx`. Every model should have a distinct ONNX filename
+when installing die, dry-pocket, and wet-pocket models in one directory.
+
+The dropdown only lists metadata that validates and points to an existing ONNX file. Check the
+OpenPnP log if it is empty. A newly added CNN stage can be configured without an immediate
+preview error, but executing an unconfigured stage in a machine pipeline still fails safely.
+Preloading and on-demand inference use the same validated metadata.
