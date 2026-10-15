@@ -49,6 +49,9 @@ import ai.onnxruntime.TensorInfo;
  * configuration and shares one session for every unchanged model.
  */
 public final class CnnModelManager implements AutoCloseable {
+    private static final String CPU_THREADS_PROPERTY = "openpnp.cnn.intraOpThreads";
+    private static final int MAX_CONFIGURED_CPU_THREADS = 64;
+
     private static final Map<Configuration, CnnModelManager> instances = new WeakHashMap<>();
 
     private final Path modelDirectory;
@@ -62,6 +65,33 @@ public final class CnnModelManager implements AutoCloseable {
     private volatile Map<Path, Exception> catalogErrors = Collections.emptyMap();
     private volatile boolean closing;
     private volatile boolean closed;
+
+    /**
+     * ONNX intra-op CPU threads. Use up to four available processors by default so a CNN
+     * does not monopolize a machine-control host; allow an explicit JVM override for tuning.
+     * Inter-op remains one, because these segmentation models execute a single graph.
+     */
+    static int cpuIntraOpThreads(int processors, String override) {
+        int conservativeDefault = Math.min(4, Math.max(1, processors));
+        if (override == null || override.trim().isEmpty()) {
+            return conservativeDefault;
+        }
+        final int requested;
+        try {
+            requested = Integer.parseInt(override.trim());
+        }
+        catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid -D" + CPU_THREADS_PROPERTY + "="
+                    + override + "; expected an integer from 1 to "
+                    + MAX_CONFIGURED_CPU_THREADS + ".", e);
+        }
+        if (requested < 1 || requested > MAX_CONFIGURED_CPU_THREADS) {
+            throw new IllegalArgumentException("Invalid -D" + CPU_THREADS_PROPERTY + "="
+                    + override + "; expected an integer from 1 to "
+                    + MAX_CONFIGURED_CPU_THREADS + ".");
+        }
+        return requested;
+    }
 
     private CnnModelManager(Configuration configuration) {
         if (configuration.getConfigurationDirectory() == null) {
@@ -528,9 +558,14 @@ public final class CnnModelManager implements AutoCloseable {
             long started = System.nanoTime();
             OrtSession candidate = null;
             try (OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
-                options.setIntraOpNumThreads(1);
+                int intraOpThreads = cpuIntraOpThreads(Runtime.getRuntime().availableProcessors(),
+                        System.getProperty(CPU_THREADS_PROPERTY));
+                options.setIntraOpNumThreads(intraOpThreads);
                 options.setInterOpNumThreads(1);
                 options.addCPU(true);
+                Logger.info("CNN model \"{}\" CPU ONNX Runtime threading: intra-op {}, inter-op 1 "
+                        + "(override using -D{}=N; restart required).",
+                        metadata.getModelId(), intraOpThreads, CPU_THREADS_PROPERTY);
                 candidate = OrtEnvironment.getEnvironment().createSession(
                         metadata.getModelPath().toString(), options);
                 validateSession(candidate);
