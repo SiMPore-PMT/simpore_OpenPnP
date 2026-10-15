@@ -95,6 +95,22 @@ class CnnModelManagerTest {
     }
 
     @Test
+    void cpuInferenceThreadDefaultAndJvmOverrideAreValidated() {
+        assertEquals(1, CnnModelManager.cpuIntraOpThreads(1, null));
+        assertEquals(2, CnnModelManager.cpuIntraOpThreads(2, null));
+        assertEquals(4, CnnModelManager.cpuIntraOpThreads(8, null));
+        assertEquals(4, CnnModelManager.cpuIntraOpThreads(16, " "));
+        assertEquals(1, CnnModelManager.cpuIntraOpThreads(8, "1"));
+        assertEquals(6, CnnModelManager.cpuIntraOpThreads(8, " 6 "));
+        assertThrows(IllegalArgumentException.class,
+                () -> CnnModelManager.cpuIntraOpThreads(8, "0"));
+        assertThrows(IllegalArgumentException.class,
+                () -> CnnModelManager.cpuIntraOpThreads(8, "65"));
+        assertThrows(IllegalArgumentException.class,
+                () -> CnnModelManager.cpuIntraOpThreads(8, "auto"));
+    }
+
+    @Test
     void concurrentFirstInferenceCoalescesAndInvalidationCreatesFreshSession() throws Exception {
         assertEquals(5, manager.listModelIds().size());
         ExecutorService executor = Executors.newFixedThreadPool(6);
