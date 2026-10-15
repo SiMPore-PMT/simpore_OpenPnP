@@ -66,3 +66,18 @@ The dropdown only lists metadata that validates and points to an existing ONNX f
 OpenPnP log if it is empty. A newly added CNN stage can be configured without an immediate
 preview error, but executing an unconfigured stage in a machine pipeline still fails safely.
 Preloading and on-demand inference use the same validated metadata.
+
+### CPU inference threading
+
+ONNX Runtime inference uses a conservative default of up to four intra-op CPU threads
+(`min(4, availableProcessors)`), with one inter-op thread. The original CNN integration
+forced a single intra-op thread and could be significantly slower on a multicore NUC.
+To compare timings or tune responsiveness, launch OpenPnP with the JVM system property
+`-Dopenpnp.cnn.intraOpThreads=1` (single-thread baseline), `=2`, or `=4`.
+On Linux, one temporary way to supply it is `JAVA_TOOL_OPTIONS=-Dopenpnp.cnn.intraOpThreads=4 ./openpnp.sh`
+when launching from the script's directory. Fully restart OpenPnP between trials because
+sessions are reused and the setting applies when ONNX sessions are created.
+
+Check for the `CPU ONNX Runtime threading: intra-op N` initialization log and compare the
+`CPU inference took ... ms` log after a warm-up run using the same input image and model.
+The optimal count varies by CPU; more threads do not always mean faster inference.
