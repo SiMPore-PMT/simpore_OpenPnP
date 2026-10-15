@@ -32,6 +32,8 @@ import org.simpleframework.xml.Attribute;
 import org.simpleframework.xml.core.Commit;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Collections;
 
 /**
  * Based off ReferenceRotatedTrayFeeder
@@ -297,6 +299,34 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
     }
 
     /**
+     * Normalize a pipeline result for the JEDEC feeder without creating replacement
+     * rectangles or modifying width, height, center, or angle. Return a mutable copy
+     * of lists so selecting the closest rectangle does not re-sort upstream models.
+     */
+    static List<RotatedRect> normalizeVisionResults(Object model) {
+        if (model == null) {
+            return new ArrayList<>();
+        }
+        if (model instanceof RotatedRect) {
+            return new ArrayList<>(Collections.singletonList((RotatedRect) model));
+        }
+        if (model instanceof List<?>) {
+            List<RotatedRect> rectangles = new ArrayList<>();
+            for (Object entry : (List<?>) model) {
+                if (!(entry instanceof RotatedRect)) {
+                    throw new IllegalArgumentException("JEDEC feeder results list contains "
+                            + (entry == null ? "null" : entry.getClass().getName())
+                            + "; expected RotatedRect.");
+                }
+                rectangles.add((RotatedRect) entry);
+            }
+            return rectangles;
+        }
+        throw new IllegalArgumentException("JEDEC feeder vision results must be a RotatedRect "
+                + "or List<RotatedRect>; received " + model.getClass().getName() + ".");
+    }
+
+    /**
      * Executes the vision pipeline to locate a part.
      * @param nozzle used nozzle
      * @return location or null
@@ -333,10 +363,11 @@ public class JEDEC_TrayFeeder extends ReferenceFeeder {
                 pipeline.setProperty("nozzle", nozzle);
                 pipeline.setProperty("feeder", this);
                 pipeline.process();
-                // Grab the results
-                @SuppressWarnings("unchecked")
-                List<RotatedRect> results = (List<RotatedRect>) pipeline.getResult(VisionUtils.PIPELINE_RESULTS_NAME).model;
-                if ((results == null) || results.isEmpty()) {
+                // CNN interpreters may return one RotatedRect. Other vision stages return
+                // List<RotatedRect>. Accept both without changing the detected geometry.
+                List<RotatedRect> results = normalizeVisionResults(
+                        pipeline.getExpectedResult(VisionUtils.PIPELINE_RESULTS_NAME).getModel());
+                if (results.isEmpty()) {
                     //nothing found
                     return null;
                 }
