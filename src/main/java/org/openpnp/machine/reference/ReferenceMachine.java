@@ -25,8 +25,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 
 import javax.swing.Action;
+import javax.swing.SwingUtilities;
 
 import org.openpnp.ConfigurationListener;
 import org.openpnp.Translations;
@@ -121,6 +123,9 @@ import org.openpnp.spi.base.SimplePropertySheetHolder;
 import org.openpnp.util.Collect;
 import org.openpnp.util.MovableUtils;
 import org.openpnp.util.UiUtils;
+import org.openpnp.vision.cnn.CnnModelManager;
+import org.openpnp.vision.cnn.CnnModelManager.PreloadReport;
+import org.openpnp.vision.cnn.CnnPipelineDiscovery;
 import org.pmw.tinylog.Logger;
 import org.simpleframework.xml.Attribute;
 import org.simpleframework.xml.Element;
@@ -222,6 +227,18 @@ public class ReferenceMachine extends AbstractMachine {
     public void setEnabled(boolean enabled) throws Exception {
         Logger.debug("setEnabled({})", enabled);
         if (enabled) {
+            Set<String> cnnModelIds = Collections.emptySet();
+            try {
+                cnnModelIds = CnnPipelineDiscovery.findReferencedModelIds(this);
+            }
+            catch (RuntimeException e) {
+                Logger.warn(e, "Unable to discover CNN model references. Dynamically resolved CNN "
+                        + "operations remain available.");
+            }
+            if (!cnnModelIds.isEmpty() && SwingUtilities.isEventDispatchThread()) {
+                throw new Exception("Machine enable with configured CNN stages must run as a "
+                        + "machine task, not on the Swing event-dispatch thread.");
+            }
             List<Driver> enabledDrivers = new ArrayList<>();
             try {
                 boolean syncLocation = false;
@@ -241,6 +258,29 @@ public class ReferenceMachine extends AbstractMachine {
                 if (getHomeAfterEnabled() && isTask(Thread.currentThread())) {
                     UiUtils.submitUiMachineTask(() -> home());
                 }
+                if (!cnnModelIds.isEmpty()) {
+                    try {
+                        PreloadReport report = CnnModelManager.get(Configuration.get())
+                                .preloadReferencedModels(this).get();
+                        if (!report.isSuccessful()) {
+                            Logger.warn("Machine enabled with {} unavailable CNN model(s). "
+                                    + "Dependent vision operations will fail safely.",
+                                    report.getFailures().size());
+                        }
+                    }
+                    catch (ExecutionException e) {
+                        Logger.warn(e.getCause(), "CNN model preload failed. Dependent vision "
+                                + "operations will fail safely.");
+                    }
+                    catch (RuntimeException e) {
+                        Logger.warn(e, "CNN model preload could not start. Dependent vision "
+                                + "operations will fail safely.");
+                    }
+                    catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new Exception("Interrupted while preloading CNN models.", e);
+                    }
+                }
             }
             catch (Exception e) {
                 // In a multi-driver machine, we must make sure its all-or-nothing, 
@@ -255,6 +295,7 @@ public class ReferenceMachine extends AbstractMachine {
                         Logger.warn(e1);
                     }
                 }
+                this.enabled = false;
                 fireMachineEnableFailed(e.getMessage());
                 throw e;
             }
@@ -552,6 +593,7 @@ public class ReferenceMachine extends AbstractMachine {
 
     @Override
     public void close() throws IOException {
+        CnnModelManager.close(Configuration.get());
         for (Driver driver : getDrivers()) {
             try {
                 driver.close();

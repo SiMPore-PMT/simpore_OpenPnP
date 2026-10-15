@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "modelId": "test-mean-channels",
+  "modelPath": "mean_channels_nchw_to_n1hw.onnx",
+  "task": "test-segmentation",
+  "input": {
+    "name": "image",
+    "layout": "NCHW",
+    "dataType": "FLOAT32",
+    "colorOrder": "RGB",
+    "scale": 0.00392156862745098,
+    "mean": [0.1, 0.2, 0.3],
+    "std": [1.0, 2.0, 3.0],
+    "resizeInterpolation": "AREA",
+    "padding": "RIGHT_BOTTOM_REPLICATE"
+  },
+  "output": {
+    "name": "logits",
+    "layout": "NCHW",
+    "dataType": "FLOAT32",
+    "interpretation": "LOGITS",
+    "foregroundChannel": 0,
+    "resizeInterpolation": "LINEAR"
+  },
+  "downsampleFactor": 1,
+  "inputAlignment": 2,
+  "defaultThreshold": 0.5
+}

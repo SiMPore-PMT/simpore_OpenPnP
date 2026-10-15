@@ -45,3 +45,94 @@ Many thanks to ej-technologies for providing a complimentary license of install4
 creates high quality, professional installers for Java applications.
 
 More information at http://www.ej-technologies.com/products/install4j/overview.html.
+
+## CNN ONNX segmentation models (SiMPore)
+
+The optional `CNN` vision stage uses ONNX Runtime CPU inference and reads model assets from
+`<OpenPnP configuration directory>/models/` (normally `~/.openpnp2/models/` on Linux).
+Create this directory if it does not already exist. Copy each exported `.onnx` file and
+its companion DeepLabs_Lumen `.json` file into that directory.
+
+The loader accepts both the original OpenPnP `schemaVersion: 1` JSON format and the
+DeepLabs_Lumen exporter `metadata_version: 1` format. For DeepLabs files, the CNN stage's
+**modelId** is the metadata filename without the `.json` suffix: `die_best.json` is selected
+as `die_best`. The `model_file` value in the JSON is authoritative and **must match** the
+actual ONNX filename in the same directory. For example, if the JSON contains
+`"model_file": "best.onnx"`, install `best.onnx`; if you rename it to `die_best.onnx`,
+change that JSON value to `die_best.onnx`. Every model should have a distinct ONNX filename
+when installing die, dry-pocket, and wet-pocket models in one directory.
+
+The dropdown only lists metadata that validates and points to an existing ONNX file. Check the
+OpenPnP log if it is empty. A newly added CNN stage can be configured without an immediate
+preview error, but executing an unconfigured stage in a machine pipeline still fails safely.
+Preloading and on-demand inference use the same validated metadata.
+
+### Jython square fitting script
+
+The reference `scripts/CNN_BestSquare.py` is a standalone OpenPnP ScriptRun Jython 2.7
+file; it is **not** loaded automatically from this repository. Copy it to the file
+path configured in the vision pipeline's ScriptRun stage, e.g.
+`~/openpnp-vision-scripts/CNN_BestSquare.py`.
+
+Supported `fit` arguments:
+
+- `fit=minarea` or `fit=debugger` (default): original DeepLabs connected-component
+  selection and OpenCV minimum-area rectangle.
+- `fit=minarea_square` or `fit=debugger_square`: minimum-area rectangle balanced
+  to an equal physical side length using X/Y camera calibration.
+- `fit=probsquare`: four-edge probability-derived rectangle (legacy name).
+- `fit=square`: four-edge probability-derived rectangle balanced to an equal
+  physical side length.
+
+Example: `cnnStage=cnn;threshold=0.8;mode=die;fit=minarea;debug=1`.
+The script prints `v2026-10-15-fit-modes-github` to the log and writes image,
+binary mask, probability preview, and exact returned fit PNGs to `/tmp` when
+`debug=1`. A downstream `DrawRotatedRects` stage can consume the ScriptRun
+stage directly: do not use a separate adapter that changes the rectangle's size.
+The script must be validated on your physical machine before placement.
+
+### CNN ScriptRun Jython performance
+
+Only CNN-dependent `.py` ScriptRun stages use a **shared, bounded** Jython
+interpreter and compiled-script cache. A fresh pipeline or cloned ScriptRun
+stage can reuse the same compiled script; each frame receives new isolated
+bindings for `pipeline`, `stage`, `args`, and the captured result. A maximum
+of eight script files is retained. Files are recompiled when their contents
+change (including same-size edits and unchanged timestamps); older cached
+interpreters are closed when evicted. Access is serialized to avoid concurrent
+use of the same Jython engine.
+
+Ordinary scripts, job/event scripts handled by `Scripting`, and `ScriptRun`
+stages without a preceding successful CNN stage use their previous engine
+lifecycle. The `ScriptRun` final-expression / final-assignment result contract
+and CNN failure-stop behavior remain unchanged.
+
+On the **first execution** of a script, the engine still initializes and
+compiles the Python source. Subsequent executions log
+`CNN ScriptRun "<stage>" cached Jython execution took ... ms` at DEBUG.
+Benchmark after a warm-up and with `debug=0` in the Python stage args.
+If warm executions remain slow, measure the image processing itself rather
+than assuming the Jython engine is being recreated.
+
+#### IntelliJ CPU threading setting
+
+In **Run → Edit Configurations → [the Application launching org.openpnp.Main]**,
+enable **Modify options → Add VM options**, then supply e.g.
+`-Dopenpnp.cnn.intraOpThreads=4`. Restart the application to reload ONNX
+sessions. The default is already `min(4, availableProcessors)`; try `1`, `2`,
+and `4` for controlled benchmarks.
+
+### CPU inference threading
+
+ONNX Runtime inference uses a conservative default of up to four intra-op CPU threads
+(`min(4, availableProcessors)`), with one inter-op thread. The original CNN integration
+forced a single intra-op thread and could be significantly slower on a multicore NUC.
+To compare timings or tune responsiveness, launch OpenPnP with the JVM system property
+`-Dopenpnp.cnn.intraOpThreads=1` (single-thread baseline), `=2`, or `=4`.
+On Linux, one temporary way to supply it is `JAVA_TOOL_OPTIONS=-Dopenpnp.cnn.intraOpThreads=4 ./openpnp.sh`
+when launching from the script's directory. Fully restart OpenPnP between trials because
+sessions are reused and the setting applies when ONNX sessions are created.
+
+Check for the `CPU ONNX Runtime threading: intra-op N` initialization log and compare the
+`CPU inference took ... ms` log after a warm-up run using the same input image and model.
+The optimal count varies by CPU; more threads do not always mean faster inference.

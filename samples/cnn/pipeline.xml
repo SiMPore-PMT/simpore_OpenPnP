@@ -1,0 +1,7 @@
+<cv-pipeline>
+   <stages>
+      <cv-stage class="org.openpnp.vision.pipeline.stages.ImageCapture" name="capture" enabled="true"/>
+      <cv-stage class="org.openpnp.vision.pipeline.stages.CNN" name="cnn" enabled="true" model-id="die-segmentation"/>
+      <cv-stage class="org.openpnp.vision.pipeline.stages.ScriptRun" name="results" enabled="true" file="CNN_BestSquare.py" args="cnnStage=cnn;threshold=0.5;mode=die"/>
+   </stages>
+</cv-pipeline>
