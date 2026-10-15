@@ -67,6 +67,30 @@ OpenPnP log if it is empty. A newly added CNN stage can be configured without an
 preview error, but executing an unconfigured stage in a machine pipeline still fails safely.
 Preloading and on-demand inference use the same validated metadata.
 
+### Jython square fitting script
+
+The reference `scripts/CNN_BestSquare.py` is a standalone OpenPnP ScriptRun Jython 2.7
+file; it is **not** loaded automatically from this repository. Copy it to the file
+path configured in the vision pipeline's ScriptRun stage, e.g.
+`~/openpnp-vision-scripts/CNN_BestSquare.py`.
+
+Supported `fit` arguments:
+
+- `fit=minarea` or `fit=debugger` (default): original DeepLabs connected-component
+  selection and OpenCV minimum-area rectangle.
+- `fit=minarea_square` or `fit=debugger_square`: minimum-area rectangle balanced
+  to an equal physical side length using X/Y camera calibration.
+- `fit=probsquare`: four-edge probability-derived rectangle (legacy name).
+- `fit=square`: four-edge probability-derived rectangle balanced to an equal
+  physical side length.
+
+Example: `cnnStage=cnn;threshold=0.8;mode=die;fit=minarea;debug=1`.
+The script prints `v2026-10-15-fit-modes-github` to the log and writes image,
+binary mask, probability preview, and exact returned fit PNGs to `/tmp` when
+`debug=1`. A downstream `DrawRotatedRects` stage can consume the ScriptRun
+stage directly: do not use a separate adapter that changes the rectangle's size.
+The script must be validated on your physical machine before placement.
+
 ### CPU inference threading
 
 ONNX Runtime inference uses a conservative default of up to four intra-op CPU threads
