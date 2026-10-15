@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
@@ -263,6 +264,43 @@ class JythonInteropTest {
     }
 
     @Test
+    void cnnCompiledCacheIsSharedAcrossDifferentPipelineInstances() throws Exception {
+        nu.pattern.OpenCV.loadLocally();
+        Mat cameraImage = new Mat(4, 6, CvType.CV_8UC3, new Scalar(11, 22, 33));
+        Path sharedScript = directory.resolve("cnn-shared.py");
+        Files.writeString(sharedScript,
+                "from org.opencv.core import Point, RotatedRect, Size\n"
+                + "from org.openpnp.vision.pipeline import CvStage\n"
+                + "CvStage.Result(None, RotatedRect(Point(float(args), 2.0), "
+                + "Size(2.0, 1.0), 17.0))\n");
+        try (CvPipeline first = new CvPipeline(); CvPipeline second = new CvPipeline()) {
+            addDeterministicInput(first, cameraImage);
+            addDeterministicInput(second, cameraImage);
+            ScriptRun firstStage = new ScriptRun();
+            firstStage.setFile(sharedScript.toFile());
+            firstStage.setArgs("3");
+            first.add("results", firstStage);
+            ScriptRun secondStage = new ScriptRun();
+            secondStage.setFile(sharedScript.toFile());
+            secondStage.setArgs("5");
+            second.add("results", secondStage);
+
+            first.process();
+            Object sameCompiledCode = cnnScriptCache(firstStage);
+            assertNotNull(sameCompiledCode);
+            second.process();
+            assertSame(sameCompiledCode, cnnScriptCache(secondStage));
+            assertEquals(3.0, first.getExpectedResult("results")
+                    .getExpectedModel(RotatedRect.class).center.x, 0.0001);
+            assertEquals(5.0, second.getExpectedResult("results")
+                    .getExpectedModel(RotatedRect.class).center.x, 0.0001);
+        }
+        finally {
+            cameraImage.release();
+        }
+    }
+
+    @Test
     void nonCnnJythonExecutionStillUsesUncachedLegacyPath() throws Exception {
         nu.pattern.OpenCV.loadLocally();
         Mat cameraImage = new Mat(4, 6, CvType.CV_8UC3, new Scalar(11, 22, 33));
@@ -290,9 +328,13 @@ class JythonInteropTest {
     }
 
     private static Object cnnScriptCache(ScriptRun script) throws Exception {
-        Field cacheField = ScriptRun.class.getDeclaredField("cnnJythonCache");
+        Field cacheField = ScriptRun.class.getDeclaredField("CNN_JYTHON_CACHE");
         cacheField.setAccessible(true);
-        return cacheField.get(script);
+        @SuppressWarnings("unchecked")
+        Map<String, ?> cache = (Map<String, ?>) cacheField.get(null);
+        synchronized (cache) {
+            return cache.get(script.getFile().toPath().toAbsolutePath().normalize().toString());
+        }
     }
 
     private static void addDeterministicInput(CvPipeline pipeline, Mat cameraImage) {
