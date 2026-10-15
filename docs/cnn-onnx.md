@@ -145,3 +145,30 @@ Real trained ONNX/export metadata, `CNN_BestSquare.py`, physical cameras/machine
 - `src/test/resources/org/openpnp/vision/cnn/mean_plus_one_nchw_to_n1hw.onnx`
 - `src/test/resources/org/openpnp/vision/cnn/return_rectangle.py`
 - `src/test/resources/org/openpnp/vision/cnn/transposed_nchw_to_n1wh.onnx`
+
+### Empty pocket detection / placement deferral
+
+Pocket verification can legitimately find no segmentation. The OpenPnP Jython helper
+`scripts/CNN_BestSquare.py` supports the opt-in argument `onMissing=empty` (alias
+`missing=empty`) only when `mode=pocket` (also `mode=wet` or `mode=dry`).
+
+```text
+cnnStage=cnn;threshold=0.9;mode=wet;fit=minarea;debug=0;onMissing=empty
+```
+
+When the mask has no qualifying pocket at the specified threshold, the stage now returns
+`CvStage.Result(null, new ArrayList<RotatedRect>())` semantically (a Jython-created
+empty Java `ArrayList`) instead of an exception. Downstream `DrawRotatedRects` can
+return that empty list as the `results` stage. The job's placement-start vision code
+must interpret **zero rectangles** as a failed pocket check, retry the allowed number
+of times, restore the previous board pose, mark that specific placement as **Defer**,
+and then throw to abort the pick. Do not silently return success from
+`Job.Placement.Starting.py`: doing so would allow the pick to continue into a pocket
+that was never confirmed. Leave missing detections fatal by default
+(`onMissing=error`) for other pipelines. Actual ONNX, camera, or image-processing
+failures are not converted to empty results.
+
+The log marker `CNN_BestSquare: NO_POCKET_DETECTED` distinguishes an expected negative
+detection from an inference failure. With the placement script's deferral path in place,
+OpenPnP should record that placement as errored/unplaced and continue with remaining
+eligible placements. Confirm this on a stationary, non-motion test before production.
