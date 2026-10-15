@@ -5,6 +5,10 @@ import java.io.FileReader;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
+import javax.script.Bindings;
+import javax.script.Compilable;
+import javax.script.CompiledScript;
+
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 
@@ -13,6 +17,7 @@ import org.openpnp.vision.pipeline.CvStage;
 import org.openpnp.vision.pipeline.Stage;
 import org.openpnp.vision.pipeline.TerminalException;
 import org.simpleframework.xml.Attribute;
+import org.pmw.tinylog.Logger;
 
 import com.google.common.io.Files;
 
@@ -20,6 +25,13 @@ import bsh.engine.BshScriptEngineFactory;
 
 @Stage(description="Run an arbitrary script file using the built in scripting engine. pipeline and stage are exposed as globals for use by the script. To return a pipeline result you can't use a return statement, but instead just let the object be the last thing the script evaluates.")
 public class ScriptRun extends CvStage {
+    // Scope the cache strictly to CNN-dependent Jython .py stages.
+    private static final String PYTHON_FACTORY = "org.python.jsr223.PyScriptEngineFactory";
+    private static final String CACHED_RESULT_KEY = "__openpnp_result";
+    private static final String CACHED_CODE_KEY = "__openpnp_code";
+    private final Object cnnJythonLock = new Object();
+    private transient CachedCnnJython cnnJythonCache;
+
     @Attribute
     private File file = new File("");
 
@@ -28,7 +40,12 @@ public class ScriptRun extends CvStage {
     }
 
     public void setFile(File file) {
-        this.file = file;
+        synchronized (cnnJythonLock) {
+            if (!java.util.Objects.equals(this.file, file)) {
+                discardCnnJythonCache();
+            }
+            this.file = file;
+        }
     }
 
     @Attribute
@@ -65,6 +82,11 @@ public class ScriptRun extends CvStage {
             return null;
         }
 
+        // Keep all non-CNN engines and .java/.bsh/.js stages on the legacy path.
+        if (cnnDependent && "py".equalsIgnoreCase(Files.getFileExtension(file.getName()))) {
+            return evaluateCachedCnnJython(pipeline);
+        }
+
         ScriptEngineManager manager = new ScriptEngineManager();
         // Hack to fix BSH on Windows. See https://github.com/openpnp/openpnp/issues/462
         manager.registerEngineExtension("bsh", new BshScriptEngineFactory());
@@ -86,6 +108,113 @@ public class ScriptRun extends CvStage {
         try (FileReader reader = new FileReader(file)) {
             Object result = engine.eval(reader);
             return checkedResult(result, cnnDependent);
+        }
+    }
+
+    /**
+     * One interpreter and precompiled Python code per CNN ScriptRun stage. Every invocation
+     * gets new bindings, so globals and CvStage.Result cannot leak across frames. The lock
+     * serializes the interpreter if this stage is shared across pipelines.
+     */
+    private Result evaluateCachedCnnJython(CvPipeline pipeline) throws Exception {
+        // Compare contents, not just timestamps: edits must take effect immediately, even
+        // if the filesystem timestamp granularity or file size would hide them.
+        final String filename = file.getAbsolutePath();
+        final String source = Files.toString(file, StandardCharsets.UTF_8);
+        synchronized (cnnJythonLock) {
+            CachedCnnJython cached = cnnJythonCache;
+            if (cached == null || !filename.equals(cached.filename)
+                    || !source.equals(cached.source)) {
+                discardCnnJythonCache();
+                cached = compileCnnJython(filename, source);
+                cnnJythonCache = cached;
+                Logger.debug("CNN ScriptRun \"{}\" compiled Jython script \"{}\"", getName(), filename);
+            }
+            Bindings bindings = cached.engine.createBindings();
+            bindings.put("pipeline", pipeline);
+            bindings.put("stage", this);
+            bindings.put("args", args);
+            bindings.put(ScriptEngine.FILENAME, filename);
+            bindings.put("__file__", filename);
+            bindings.put(CACHED_CODE_KEY, cached.pythonCode);
+            bindings.put(CACHED_RESULT_KEY, null);
+            cached.runner.eval(bindings);
+            return checkedResult(bindings.get(CACHED_RESULT_KEY), true);
+        }
+    }
+
+    private static CachedCnnJython compileCnnJython(String filename, String source) throws Exception {
+        ScriptEngine engine = new ScriptEngineManager().getEngineByExtension("py");
+        if (engine == null || !PYTHON_FACTORY.equals(engine.getFactory().getClass().getName())
+                || !(engine instanceof Compilable)) {
+            throw new Exception("CNN cached ScriptRun requires a compilable Jython .py engine.");
+        }
+        try {
+            engine.put("__openpnp_source", source);
+            engine.put("__openpnp_filename", filename);
+            // Same final-expression / final-assignment capture contract as the legacy path,
+            // but compile the AST once instead of parsing 400+ lines on every frame.
+            String bootstrap = "import ast as __openpnp_ast\n"
+                    + "__openpnp_tree = __openpnp_ast.parse(__openpnp_source, __openpnp_filename, 'exec')\n"
+                    + "if __openpnp_tree.body:\n"
+                    + "    __openpnp_last = __openpnp_tree.body[-1]\n"
+                    + "    if isinstance(__openpnp_last, __openpnp_ast.Expr):\n"
+                    + "        __openpnp_tree.body[-1] = __openpnp_ast.copy_location("
+                    + "__openpnp_ast.Assign(targets=[__openpnp_ast.Name(id='"
+                    + CACHED_RESULT_KEY + "', ctx=__openpnp_ast.Store())], "
+                    + "value=__openpnp_last.value), __openpnp_last)\n"
+                    + "    elif isinstance(__openpnp_last, __openpnp_ast.Assign):\n"
+                    + "        __openpnp_last.targets.append(__openpnp_ast.Name(id='"
+                    + CACHED_RESULT_KEY + "', ctx=__openpnp_ast.Store()))\n"
+                    + CACHED_CODE_KEY + " = compile(__openpnp_ast.fix_missing_locations("
+                    + "__openpnp_tree), __openpnp_filename, 'exec')\n";
+            engine.eval(bootstrap);
+            Object pythonCode = engine.get(CACHED_CODE_KEY);
+            if (pythonCode == null) {
+                throw new Exception("Jython failed to compile CNN interpreter script " + filename);
+            }
+            CompiledScript runner = ((Compilable) engine).compile(
+                    "exec " + CACHED_CODE_KEY + " in globals()\n");
+            return new CachedCnnJython(filename, source, engine, runner, pythonCode);
+        }
+        catch (Exception | LinkageError e) {
+            closeCnnJythonEngine(engine);
+            throw e;
+        }
+    }
+
+    private void discardCnnJythonCache() {
+        if (cnnJythonCache != null) {
+            closeCnnJythonEngine(cnnJythonCache.engine);
+            cnnJythonCache = null;
+        }
+    }
+
+    private static void closeCnnJythonEngine(ScriptEngine engine) {
+        if (engine instanceof AutoCloseable) {
+            try {
+                ((AutoCloseable) engine).close();
+            }
+            catch (Exception e) {
+                Logger.warn(e, "Unable to close cached CNN Jython interpreter.");
+            }
+        }
+    }
+
+    private static final class CachedCnnJython {
+        private final String filename;
+        private final String source;
+        private final ScriptEngine engine;
+        private final CompiledScript runner;
+        private final Object pythonCode;
+
+        private CachedCnnJython(String filename, String source, ScriptEngine engine,
+                CompiledScript runner, Object pythonCode) {
+            this.filename = filename;
+            this.source = source;
+            this.engine = engine;
+            this.runner = runner;
+            this.pythonCode = pythonCode;
         }
     }
 
