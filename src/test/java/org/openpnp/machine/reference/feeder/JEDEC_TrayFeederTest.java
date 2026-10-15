@@ -1,9 +1,19 @@
 package org.openpnp.machine.reference.feeder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Proxy;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import org.opencv.core.Point;
+import org.opencv.core.RotatedRect;
+import org.opencv.core.Size;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +41,47 @@ public class JEDEC_TrayFeederTest {
     public void initializeConfiguration() {
         Configuration.initialize(configurationDirectory.toFile());
         Configuration.get().setMachine(new ReferenceMachine());
+    }
+
+    @Test
+    public void visionResultsAcceptOneRectangleWithoutChangingGeometry() {
+        RotatedRect detected = new RotatedRect(
+                new Point(956.05, 512.69), new Size(453.0, 448.0), -2.8);
+        List<RotatedRect> results = JEDEC_TrayFeeder.normalizeVisionResults(detected);
+        assertEquals(1, results.size());
+        assertSame(detected, results.get(0));
+        assertEquals(956.05, results.get(0).center.x, 0.00001);
+        assertEquals(512.69, results.get(0).center.y, 0.00001);
+        assertEquals(453.0, results.get(0).size.width, 0.00001);
+        assertEquals(448.0, results.get(0).size.height, 0.00001);
+        assertEquals(-2.8, results.get(0).angle, 0.00001);
+    }
+
+    @Test
+    public void visionResultsPreserveListGeometryAndDoNotResortSource() {
+        RotatedRect first = new RotatedRect(
+                new Point(100, 200), new Size(451.5, 450.2), 1.0);
+        RotatedRect second = new RotatedRect(
+                new Point(300, 400), new Size(453.0, 448.0), -2.8);
+        List<RotatedRect> original = new ArrayList<>(Arrays.asList(first, second));
+        List<RotatedRect> result = JEDEC_TrayFeeder.normalizeVisionResults(original);
+        assertEquals(2, result.size());
+        assertSame(first, result.get(0));
+        assertSame(second, result.get(1));
+        result.sort((left, right) -> Double.compare(
+                right.center.x, left.center.x));
+        assertSame(first, original.get(0));
+        assertSame(second, original.get(1));
+        assertSame(second, result.get(0));
+    }
+
+    @Test
+    public void visionResultsHandleNullAndRejectUnexpectedTypes() {
+        assertTrue(JEDEC_TrayFeeder.normalizeVisionResults(null).isEmpty());
+        assertThrows(IllegalArgumentException.class,
+                () -> JEDEC_TrayFeeder.normalizeVisionResults("bad"));
+        assertThrows(IllegalArgumentException.class,
+                () -> JEDEC_TrayFeeder.normalizeVisionResults(Arrays.asList("bad")));
     }
 
     @Test
